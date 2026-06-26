@@ -9,9 +9,15 @@ import os
 import json
 import random
 import requests
+import sys
 from datetime import datetime
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
+
+# 导入规则引擎
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'rule_engine'))
+from rule_engine import RuleEngine
+rule_engine = RuleEngine()
 
 app = Flask(__name__, static_folder='static', static_url_path='')
 CORS(app)
@@ -173,6 +179,12 @@ def analyze_company(code, info):
     base_score, factors = calculate_risk_score(fin)
     log('财务检测Agent', '完成', f"财务异常基础分：{base_score}分，识别{len(factors)}个风险点")
     
+    log('规则引擎Agent', '规则匹配', '基于上交所21份问询函构建的规则库进行匹配...')
+    # 准备问询函内容文本用于规则匹配
+    announcement_text = ' '.join([a['title'] for a in announcements]) + ' 关联交易 对外投资 担保'
+    rule_result = rule_engine.predict_inquiry_probability(fin, announcement_text, {'code': code, **info})
+    log('规则引擎Agent', '完成', f"规则库评分：{rule_result['total_score']}分，匹配{len(rule_result['fin_signals'])}个财务信号")
+    
     log('案例检索Agent', '匹配案例', '检索历史相似问询案例...')
     cases = random.sample(HISTORICAL_CASES, k=min(3, len(HISTORICAL_CASES)))
     log('案例检索Agent', '完成', f"找到{len(cases)}个相似历史案例")
@@ -276,7 +288,8 @@ def analyze_company(code, info):
         'ai_analysis': ai,
         'matched_cases': cases,
         'announcements': announcements,
-        'reasoning_logs': logs
+        'reasoning_logs': logs,
+        'rule_engine_result': rule_result  # 添加规则引擎结果
     }
 
 
@@ -365,6 +378,33 @@ def history_cases():
     t = request.args.get('risk_type', '')
     cases = [c for c in HISTORICAL_CASES if not t or c['risk_type'] == t]
     return jsonify({'success': True, 'data': cases})
+
+
+@app.route('/api/rule-engine/info')
+def rule_engine_info():
+    """返回规则库元信息"""
+    return jsonify({
+        'success': True,
+        'data': {
+            'meta': rule_engine.rules['meta'],
+            'rule_count': {
+                'trigger_events': len(rule_engine.categories['trigger_events']['rules']),
+                'financial_signals': len(rule_engine.categories['financial_signals']['rules']),
+                'compliance_signals': len(rule_engine.categories['compliance_signals']['rules']),
+                'structural_patterns': len(rule_engine.categories['structural_patterns']['rules']),
+                'case_patterns': len(rule_engine.rules.get('case_patterns', []))
+            }
+        }
+    })
+
+
+@app.route('/api/rule-engine/categories')
+def rule_engine_categories():
+    """返回所有规则分类"""
+    return jsonify({
+        'success': True,
+        'data': rule_engine.categories
+    })
 
 
 @app.route('/api/dashboard/stats')

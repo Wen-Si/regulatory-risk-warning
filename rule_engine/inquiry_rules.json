@@ -1,0 +1,286 @@
+{
+  "meta": {
+    "name": "上交所监管问询规则库",
+    "version": "1.0.0",
+    "source": "上海证券交易所监管问询函(2026年1月-6月共21份样本)",
+    "url": "https://www.sse.com.cn/regulation/supervision/inquiries/",
+    "description": "基于上交所问询函实际内容提取的监管问询规律规则库，用于预测上市公司监管问询概率及可能涉及的问询内容",
+    "sample_size": 21,
+    "update_time": "2026-06-26"
+  },
+  "rule_categories": {
+    "trigger_events": {
+      "name": "触发事件类型",
+      "description": "容易触发监管问询的公告事件类型",
+      "rules": [
+        {
+          "id": "TR001",
+          "type": "重大资产重组",
+          "weight": 35,
+          "keywords": ["重大资产购买报告书", "发行股份及支付现金购买资产", "重大资产重组草案", "重大资产重组预案"],
+          "sample_companies": ["永杰新材", "威帝股份", "韩建河山", "明阳智能", "得邦照明"],
+          "common_questions": ["交易方案是否合理", "标的资产财务状况", "估值依据及评估方法", "业绩承诺合理性", "整合风险"],
+          "trigger_probability": 0.90
+        },
+        {
+          "id": "TR002",
+          "type": "资产收购/股权收购",
+          "weight": 28,
+          "keywords": ["资产收购", "股权收购", "购买资产", "现金收购", "调整收购方案"],
+          "sample_companies": ["金橙子", "天龙股份", "风范股份", "康欣新材", "华立股份"],
+          "common_questions": ["交易必要性", "交易作价公允性", "是否构成关联交易", "交易对方背景", "资金来源"],
+          "trigger_probability": 0.75
+        },
+        {
+          "id": "TR003",
+          "type": "对外投资/认购基金",
+          "weight": 22,
+          "keywords": ["对外投资", "认购基金份额", "设立合资公司", "新设子公司", "投资设立"],
+          "sample_companies": ["宿迁联盛", "ST高科", "大众公用"],
+          "common_questions": ["跨界投资合理性", "资金实力匹配", "技术储备", "内幕信息管理", "是否配合市值管理"],
+          "trigger_probability": 0.70
+        },
+        {
+          "id": "TR004",
+          "type": "关联交易/向关联方购买资产",
+          "weight": 30,
+          "keywords": ["向关联方购买资产", "关联交易", "关联方资金往来", "关联方担保"],
+          "sample_companies": ["莎普爱思", "ST春天"],
+          "common_questions": ["交易公允性", "是否利益输送", "关联方识别", "审议程序", "信息披露"],
+          "trigger_probability": 0.85
+        },
+        {
+          "id": "TR005",
+          "type": "定期报告/年报问询",
+          "weight": 40,
+          "keywords": ["年度报告", "年报", "2025年报", "年度财务报告"],
+          "sample_companies": ["ST春天", "ST艾艾", "ST海华", "ST正平"],
+          "common_questions": ["收入确认合规性", "客户与供应商关系", "应收账款", "商誉减值", "资金闭环", "营业收入扣除"],
+          "trigger_probability": 0.95,
+          "note": "ST类公司年报问询概率极高，ST前缀公司年报几乎100%被问询"
+        },
+        {
+          "id": "TR006",
+          "type": "出售境外资产/资产剥离",
+          "weight": 25,
+          "keywords": ["出售境外", "资产出售", "资产剥离"],
+          "sample_companies": ["振江股份"],
+          "common_questions": ["交易作价公允性", "境外资产估值", "对价支付", "业绩影响"],
+          "trigger_probability": 0.70
+        },
+        {
+          "id": "TR007",
+          "type": "业绩预告/财务类终止上市",
+          "weight": 35,
+          "keywords": ["业绩预告", "触及财务类终止上市", "退市风险"],
+          "sample_companies": ["ST艾艾", "ST太和", "ST沐邦", "ST原尚"],
+          "common_questions": ["业绩修正原因", "财务真实性", "持续经营能力", "是否规避退市"],
+          "trigger_probability": 0.95,
+          "note": "ST类公司业绩相关事项问询率接近100%"
+        },
+        {
+          "id": "TR008",
+          "type": "股价异动配合",
+          "weight": 30,
+          "keywords": ["股价异动", "异常波动", "涨幅偏离值"],
+          "sample_companies": ["宿迁联盛", "ST高科", "京投发展"],
+          "common_questions": ["信息披露配合", "内幕信息管理", "股东减持配合", "市值管理动机"],
+          "trigger_probability": 0.85
+        },
+        {
+          "id": "TR009",
+          "type": "高管变动/治理结构",
+          "weight": 18,
+          "keywords": ["董事换届", "高管变动", "管理层变更", "高管离职"],
+          "sample_companies": ["天普股份"],
+          "common_questions": ["换届程序合规性", "人员变动原因", "对经营影响"],
+          "trigger_probability": 0.50
+        }
+      ]
+    },
+    "financial_signals": {
+      "name": "财务异常信号",
+      "description": "触发问询的财务指标异常",
+      "rules": [
+        {"id": "FS001", "signal": "商誉占净资产>25%", "weight": 15, "type": "商誉减值风险", "regex_check": "goodwill_ratio > 25"},
+        {"id": "FS002", "signal": "并购标的业绩承诺未达标", "weight": 12, "type": "商誉减值"},
+        {"id": "FS003", "signal": "资产负债率>65%", "weight": 15, "type": "偿债压力"},
+        {"id": "FS004", "signal": "经营现金流/净利润<0.5", "weight": 13, "type": "盈利质量存疑"},
+        {"id": "FS005", "signal": "应收账款周转率<3", "weight": 12, "type": "回款风险"},
+        {"id": "FS006", "signal": "存货周转率<2", "weight": 10, "type": "存货积压/减值风险"},
+        {"id": "FS007", "signal": "营收增长率异常（绝对值>50%或为负）", "weight": 10, "type": "经营波动"},
+        {"id": "FS008", "signal": "净利润与营收背离", "weight": 13, "type": "财务真实性"},
+        {"id": "FS009", "signal": "毛利率异常波动", "weight": 10, "type": "财务真实性"},
+        {"id": "FS010", "signal": "前五大客户/供应商集中度过高", "weight": 10, "type": "客户依赖/供应商依赖"},
+        {"id": "FS011", "signal": "其他应收/应付异常增长", "weight": 12, "type": "资金占用嫌疑"},
+        {"id": "FS012", "signal": "研发支出资本化率异常", "weight": 8, "type": "会计估计"},
+        {"id": "FS013", "signal": "在建工程长期挂账", "weight": 8, "type": "资产真实性"},
+        {"id": "FS014", "signal": "营业收入扣除金额大", "weight": 10, "type": "收入合规性"},
+        {"id": "FS015", "signal": "第四季度收入占比异常", "weight": 9, "type": "收入确认时点"}
+      ]
+    },
+    "compliance_signals": {
+      "name": "合规性信号",
+      "description": "可能触发问询的合规性问题",
+      "rules": [
+        {"id": "CS001", "signal": "关联交易未充分披露", "weight": 15, "type": "关联交易合规性"},
+        {"id": "CS002", "signal": "关联方识别不完整", "weight": 12, "type": "关联交易合规性"},
+        {"id": "CS003", "signal": "对外担保超净资产", "weight": 14, "type": "担保合规性"},
+        {"id": "CS004", "signal": "资金占用嫌疑", "weight": 18, "type": "资金占用"},
+        {"id": "CS005", "signal": "实控人/董监高股票交易异常", "weight": 12, "type": "内幕交易"},
+        {"id": "CS006", "signal": "股东减持与公告配合", "weight": 15, "type": "内幕交易"},
+        {"id": "CS007", "signal": "内幕信息知情人登记不全", "weight": 10, "type": "内幕信息管理"},
+        {"id": "CS008", "signal": "跨界投资与主营不相关", "weight": 13, "type": "投资合理性"},
+        {"id": "CS009", "signal": "蹭市场热点概念", "weight": 12, "type": "信息披露真实性"},
+        {"id": "CS010", "signal": "新设子公司与主营跨度大", "weight": 10, "type": "投资合理性"},
+        {"id": "CS011", "signal": "客户与供应商同一控制", "weight": 14, "type": "交易真实性"},
+        {"id": "CS012", "signal": "资金闭环嫌疑", "weight": 16, "type": "收入真实性"}
+      ]
+    },
+    "structural_patterns": {
+      "name": "问询函结构规律",
+      "description": "问询函的标准结构和问询模式",
+      "rules": [
+        {
+          "id": "SP001",
+          "pattern": "引言段",
+          "template": "Y年M月D日，你公司公告称{触发事项}。鉴于上述事项对投资者影响重大，根据本所《股票上市规则》第13.1.1条等有关规定，现请你公司核实并披露如下事项。",
+          "weight": 1.0
+        },
+        {
+          "id": "SP002",
+          "pattern": "问询主体",
+          "template": "一、关于{主题1}：请公司补充披露：(1){问题1};(2){问题2};(3){问题3}。",
+          "weight": 1.0
+        },
+        {
+          "id": "SP003",
+          "pattern": "问询主体-投资类",
+          "template": "请公司补充披露：(1)交易作价公允性及估值依据；(2)交易对方背景及关联关系；(3)交易对公司持续经营的影响；(4)资金来源及支付安排。",
+          "weight": 0.85
+        },
+        {
+          "id": "SP004",
+          "pattern": "问询主体-财务类",
+          "template": "请公司补充披露：(1)收入确认政策及依据；(2)前N大客户/供应商详情；(3)应收账款账龄及坏账准备；(4)是否具有商业实质。",
+          "weight": 0.90
+        },
+        {
+          "id": "SP005",
+          "pattern": "问询主体-合规类",
+          "template": "请公司补充披露：(1)内幕信息知情人登记情况；(2)自查相关信息是否提前泄露；(3)实控人/董监高近期股票交易情况。",
+          "weight": 0.80
+        },
+        {
+          "id": "SP006",
+          "pattern": "收尾要求",
+          "template": "请公司收到本问询函后立即披露，并于5个交易日内披露对本问询函的回复。请{律师/独立董事/年审会计师}发表意见。",
+          "weight": 1.0
+        }
+      ]
+    },
+    "professional_requirements": {
+      "name": "专业角色要求",
+      "description": "问询函要求的专业意见",
+      "rules": [
+        {"id": "PR001", "role": "律师", "scenario": "合规、内幕信息、关联交易", "frequency": 0.85},
+        {"id": "PR002", "role": "独立董事", "scenario": "重大投资、关联交易、跨界并购", "frequency": 0.80},
+        {"id": "PR003", "role": "年审会计师", "scenario": "财务数据、收入确认、减值", "frequency": 0.95},
+        {"id": "PR004", "role": "保荐机构", "scenario": "再融资、发行股份购买资产", "frequency": 0.70}
+      ]
+    },
+    "risk_weights": {
+      "name": "综合风险权重",
+      "description": "问询概率测算的权重配置",
+      "company_type_weight": {
+        "*ST/ST公司": 0.95,
+        "重大资产重组中": 0.85,
+        "实控人变更1年内": 0.75,
+        "近期股价异动": 0.65,
+        "正常运营公司": 0.20
+      },
+      "industry_weight": {
+        "新能源": 0.55,
+        "半导体": 0.50,
+        "医药": 0.60,
+        "房地产": 0.70,
+        "金融": 0.45,
+        "传统制造": 0.40
+      },
+      "market_cap_weight": {
+        "市值<50亿": 0.50,
+        "市值50-200亿": 0.40,
+        "市值200-1000亿": 0.35,
+        "市值>1000亿": 0.30
+      }
+    },
+    "inquiry_time_window": {
+      "name": "问询时间窗口",
+      "rules": [
+        {"type": "年报问询函", "trigger": "年报披露后30-90天内", "weight": 0.95},
+        {"type": "重组预案问询函", "trigger": "公告后10-30天内", "weight": 0.90},
+        {"type": "日常问询函", "trigger": "公告后5-15天内", "weight": 0.75},
+        {"type": "关注函", "trigger": "事件发生当日", "weight": 0.85}
+      ]
+    },
+    "common_question_library": {
+      "name": "常见问询问题库",
+      "description": "高频出现的问询问题模板",
+      "questions": [
+        "请公司结合{财务指标}说明是否存在异常，并说明原因",
+        "请公司补充披露{交易对方}的基本情况及与公司是否存在关联关系",
+        "请公司说明{事项}对持续经营能力的影响，并充分提示风险",
+        "请公司自查{事项}的信息披露是否真实、准确、完整",
+        "请公司结合{事项}说明是否存在利用信息披露配合{股东减持/市值管理}的情形",
+        "请公司说明内幕信息知情人登记及保密措施执行情况",
+        "请公司说明交易作价的公允性及估值依据",
+        "请公司说明{业务}的商业实质及收入确认合规性",
+        "请年审会计师对{财务事项}发表意见",
+        "请独立董事对{重大事项}发表意见",
+        "请律师对{合规事项}发表意见"
+      ]
+    }
+  },
+  "case_patterns": [
+    {
+      "case_id": "P001",
+      "pattern": "跨界投资+股价异动+股东减持",
+      "risk_level": "高风险",
+      "probability": 0.90,
+      "example": "宿迁联盛/ST高科",
+      "rules": ["TR001", "TR003", "TR008", "CS006", "CS008"]
+    },
+    {
+      "case_id": "P002",
+      "pattern": "重大资产重组+估值高+业绩承诺",
+      "risk_level": "高风险",
+      "probability": 0.95,
+      "example": "永杰新材/威帝股份/明阳智能",
+      "rules": ["TR001", "FS001", "FS002", "CS011"]
+    },
+    {
+      "case_id": "P003",
+      "pattern": "ST公司+年报披露+收入异常",
+      "risk_level": "高风险",
+      "probability": 0.98,
+      "example": "ST春天/ST艾艾/ST海华",
+      "rules": ["TR005", "FS008", "FS014", "CS011", "CS012"]
+    },
+    {
+      "case_id": "P004",
+      "pattern": "关联交易+收购资产+资金安排",
+      "risk_level": "高风险",
+      "probability": 0.85,
+      "example": "莎普爱思/振江股份",
+      "rules": ["TR004", "TR002", "CS001", "CS002"]
+    },
+    {
+      "case_id": "P005",
+      "pattern": "资产收购+跨界+二次问询",
+      "risk_level": "中风险",
+      "probability": 0.75,
+      "example": "天龙股份/金橙子/风范股份",
+      "rules": ["TR002", "CS008"]
+    }
+  ]
+}
