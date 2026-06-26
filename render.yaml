@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: regulatory-risk-warning
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT
+    envVars:
+      - key: ZHIPU_API_KEY
+        value: 325d6fa364954d2e871c30ba95b553bd.KBdQdqgJgELJBhnv
+    healthCheckPath: /api/health
