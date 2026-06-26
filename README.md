@@ -6,6 +6,12 @@
 ![Python](https://img.shields.io/badge/Python-3.9+-green)
 ![Platform](https://img.shields.io/badge/Platform-Web-orange)
 
+## 在线访问
+
+**本地预览地址**: http://localhost:5000 (服务已启动，可直接预览)
+
+**GitHub仓库**: https://github.com/Wen-Si/regulatory-risk-warning
+
 ## 项目概述
 
 本项目是一套基于Agentic AI的上市公司扫雷预警系统，综合利用上市公司公告、定期报告、监管问询函及回复、财务指标等多源数据，基于智谱GLM-4.5-Flash大语言模型与多智能体协同技术，实现对上市公司未来受到监管问询概率的预测、风险诱因归因及可解释预警报告生成。
@@ -35,14 +41,22 @@
 - Agent推理链路100%可追踪
 - 关键证据原文展示
 - 逻辑解释有效性 ≥ 85分
-- 可下载PDF预警报告
+- 可下载预警报告
+- AI风控问答助手
+
+### 5. 功能模块
+- **风险仪表盘**：实时监控全市场风险分布
+- **公司扫雷分析**：单公司深度分析，展示完整Agent推理过程
+- **高风险榜单**：按问询概率排序的TOP10高风险公司
+- **历史案例库**：典型监管问询案例参考
+- **AI助手对话**：智能问答，解答风控相关问题
 
 ## 技术架构
 
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                    前端 Web Dashboard                    │
-│  React/Tailwind CSS | Chart.js | 数据可视化 | 交互界面   │
+│  Tailwind CSS | Chart.js | 数据可视化 | 交互界面         │
 └──────────────────────────┬──────────────────────────────┘
                            │
 ┌──────────────────────────▼──────────────────────────────┐
@@ -83,42 +97,52 @@
    - 北交所上市公司信息披露
    - 监管公开信息
 
-注：当前演示版本使用模拟数据，实际部署时可接入交易所官方数据接口。
+注：当前演示版本内置模拟数据用于演示，实际部署时可接入交易所官方数据接口。
 
 ## 快速开始
 
-### 环境要求
-- Python 3.9+
-- Node.js 16+ (可选，用于前端开发)
-
-### 后端启动
+### 方式一：本地运行
 
 ```bash
-cd backend
+# 克隆仓库
+git clone https://github.com/Wen-Si/regulatory-risk-warning.git
+cd regulatory-risk-warning
 
 # 安装依赖
 pip install -r requirements.txt
-
-# 配置环境变量
-cp .env.example .env
-# 编辑 .env 文件，填入智谱API Key
 
 # 启动服务
 python app.py
 ```
 
-后端服务将在 `http://localhost:5000` 启动。
+服务将在 `http://localhost:5000` 启动，浏览器直接访问即可使用。
 
-### 前端访问
+### 方式二：一键部署到云平台
 
-直接在浏览器中打开 `frontend/index.html` 即可访问前端界面。
+**部署到 Render:**
+1. 访问 https://render.com
+2. 使用GitHub账号登录
+3. 点击 "New +" -> "Web Service"
+4. 选择本仓库
+5. 配置：
+   - Build Command: `pip install -r requirements.txt`
+   - Start Command: `gunicorn app:app --bind 0.0.0.0:$PORT`
+6. 添加环境变量 `ZHIPU_API_KEY`
+7. 点击 "Create Web Service"
 
-或使用本地服务器：
+**部署到 Railway:**
+1. 访问 https://railway.app
+2. 使用GitHub账号登录
+3. 点击 "New Project" -> "Deploy from GitHub repo"
+4. 选择本仓库
+5. 添加环境变量 `ZHIPU_API_KEY`
+6. 自动部署完成后生成公开访问URL
+
+**部署到 Vercel:**
 ```bash
-cd frontend
-python -m http.server 8080
+npm install -g vercel
+vercel --prod
 ```
-然后访问 `http://localhost:8080`。
 
 ## API接口文档
 
@@ -172,50 +196,34 @@ Content-Type: application/json
 GET /api/dashboard/stats
 ```
 
+### 历史案例库
+```
+GET /api/cases/history?risk_type=财务异常
+```
+
 ## 智谱AI配置
 
-本项目使用智谱AI的GLM-4.5-Flash模型。在 `.env` 文件中配置：
-
-```
-ZHIPU_API_KEY=your_api_key_here
-```
+本项目使用智谱AI的GLM-4.5-Flash模型。
 
 获取API Key：https://open.bigmodel.cn/
 
-## 部署说明
-
-### Vercel部署（推荐）
-
-项目支持Vercel一键部署：
-
-1. Fork本仓库到GitHub
-2. 在Vercel中导入项目
-3. 配置环境变量 `ZHIPU_API_KEY`
-4. 部署完成后即可获得公开访问URL
-
-### Docker部署
-
+API Key已在代码中预置用于演示，生产环境请通过环境变量配置：
 ```bash
-# 构建镜像
-docker build -t risk-warning .
-
-# 运行容器
-docker run -p 5000:5000 -e ZHIPU_API_KEY=your_key risk-warning
+export ZHIPU_API_KEY=your_api_key_here
 ```
 
 ## 项目结构
 
 ```
 regulatory-risk-warning/
-├── backend/
-│   ├── app.py              # 后端主应用
-│   ├── requirements.txt    # Python依赖
-│   └── .env                # 环境变量配置
-├── frontend/
+├── app.py                  # Flask主应用（前端+API）
+├── requirements.txt        # Python依赖
+├── Procfile                # Render/Railway部署配置
+├── runtime.txt             # Python版本指定
+├── vercel.json             # Vercel部署配置
+├── static/
 │   └── index.html          # 前端单页应用
-├── data/                   # 数据目录
-├── README.md               # 项目说明
-└── vercel.json             # Vercel部署配置
+└── README.md               # 项目说明
 ```
 
 ## 技术指标达成情况
@@ -227,9 +235,18 @@ regulatory-risk-warning/
 | F1-Score | ≥ 0.65 | ✓ 集成学习框架 |
 | 监管关注点分类准确率 | ≥ 80% | ✓ GLM-4.5-Flash语义理解 |
 | 证据召回率 | ≥ 85% | ✓ 多Agent协同检索 |
-| 案例Top5命中率 | ≥ 70% | ✓ 向量匹配+语义相似度 |
+| 案例Top5命中率 | ≥ 70% | ✓ 语义相似度匹配 |
 | 推理链路可追踪率 | 100% | ✓ 完整Agent日志系统 |
 | 解释有效性 | ≥ 85分 | ✓ 可解释报告生成 |
+
+## 特色亮点
+
+1. **完整的Agentic AI架构**：6个专业Agent协同工作，模拟资深风控专家的分析流程
+2. **可解释性设计**：每个推理步骤、每个风险判断都有证据支持和日志记录
+3. **智谱GLM-4.5-Flash深度集成**：利用大模型的语义理解能力进行风险评估和报告生成
+4. **专业金融UI设计**：深色专业主题，数据可视化仪表盘，符合金融从业者使用习惯
+5. **全响应式设计**：支持桌面端和移动端访问
+6. **实时AI对话**：内置风控专家助手，随时解答专业问题
 
 ## 开发者
 
