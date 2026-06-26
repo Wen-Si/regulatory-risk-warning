@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-智鉴风控 - 基于Agentic AI的上市公司监管问询预警系统
+智鉴风控 - 基于Agentic AI + 深度学习 + 强化学习的上市公司监管问询预警系统
 主应用入口 - Flask托管前端+API
+
+v2.0 升级：引入前沿深度学习与强化学习算法
+- 深度学习：DeepFM（特征交叉）、Temporal Transformer（时序注意力）、GAT（图注意力网络）、RiskTextEncoder（文本编码）
+- 强化学习：PPO（自适应阈值优化）、Thompson Sampling（集成权重学习）
+- 混合架构：DL+RL+规则引擎+LLM可解释性
 """
 
 import os
@@ -10,14 +15,15 @@ import json
 import random
 import requests
 import sys
+import numpy as np
 from datetime import datetime
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 
-# 导入规则引擎
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'rule_engine'))
-from rule_engine import RuleEngine
-rule_engine = RuleEngine()
+# 导入混合预测引擎
+sys.path.insert(0, os.path.dirname(__file__))
+from ml_engine import HybridPredictor
+predictor = HybridPredictor(use_rl=True)
 
 app = Flask(__name__, static_folder='static', static_url_path='')
 CORS(app)
@@ -96,201 +102,198 @@ def call_zhipu_ai(messages, temperature=0.3, max_tokens=2000):
         return None
 
 
-def safe_int(val, default=50):
-    """安全转换为0-100的整数"""
-    try:
-        if isinstance(val, str):
-            val = val.replace('%', '').replace('分', '').strip()
-        v = int(round(float(val)))
-        return max(0, min(100, v))
-    except:
-        return default
-
-
-def normalize_risk_level(level, score=50):
-    """标准化风险等级"""
-    if level is None:
-        return '高风险' if score >= 70 else ('中风险' if score >= 40 else '低风险')
-    s = str(level)
-    if '高' in s or 'high' in s.lower() or s in ['3', '红色']:
-        return '高风险'
-    if '低' in s or 'low' in s.lower() or s in ['1', '绿色']:
-        return '低风险'
-    if score >= 70:
-        return '高风险'
-    if score >= 40:
-        return '中风险'
-    return '低风险'
-
-
 def generate_mock_financial_data(company_code):
+    """生成模拟财务数据"""
     random.seed(hash(company_code) % 10000)
     has_risk = random.random() < 0.4
-    return {
-        'revenue_growth': random.uniform(-10, 30) if not has_risk else random.uniform(-30, 80),
-        'profit_growth': random.uniform(-15, 25) if not has_risk else random.uniform(-50, 120),
-        'roe': random.uniform(5, 20) if not has_risk else random.uniform(-10, 5),
-        'debt_ratio': random.uniform(30, 60) if not has_risk else random.uniform(65, 90),
-        'account_receivable_turnover': random.uniform(5, 15) if not has_risk else random.uniform(1, 4),
-        'inventory_turnover': random.uniform(3, 10) if not has_risk else random.uniform(0.5, 2),
-        'operating_cashflow_ratio': random.uniform(0.8, 1.5) if not has_risk else random.uniform(-0.5, 0.3),
-        'goodwill_ratio': random.uniform(0, 15) if not has_risk else random.uniform(20, 50),
-        'pledge_ratio': random.uniform(0, 20) if not has_risk else random.uniform(40, 80),
-        'guarantee_ratio': random.uniform(0, 10) if not has_risk else random.uniform(30, 70),
-    }, has_risk
-
-
-def calculate_risk_score(fin):
-    score = 0
-    factors = []
-    checks = [
-        (abs(fin['revenue_growth']) > 50, '营收增长率异常', 15, f"营收增长率{fin['revenue_growth']:.1f}%，偏离正常区间"),
-        (fin['roe'] < 3, 'ROE偏低', 10, f"ROE为{fin['roe']:.1f}%，盈利能力较弱"),
-        (fin['debt_ratio'] > 65, '资产负债率过高', 15, f"资产负债率{fin['debt_ratio']:.1f}%，偿债压力大"),
-        (fin['account_receivable_turnover'] < 3, '应收账款周转过慢', 12, f"应收账款周转率{fin['account_receivable_turnover']:.1f}次，回款风险高"),
-        (fin['inventory_turnover'] < 2, '存货周转异常', 10, f"存货周转率{fin['inventory_turnover']:.1f}次，存在滞销或减值风险"),
-        (fin['operating_cashflow_ratio'] < 0.5, '经营现金流不足', 13, f"经营现金流/净利润比值{fin['operating_cashflow_ratio']:.2f}，盈利质量存疑"),
-        (fin['goodwill_ratio'] > 25, '商誉占比过高', 12, f"商誉占净资产{fin['goodwill_ratio']:.1f}%，存在减值风险"),
-        (fin['pledge_ratio'] > 50, '股权质押比例高', 8, f"控股股东股权质押比例{fin['pledge_ratio']:.1f}%，存在平仓风险"),
-        (fin['guarantee_ratio'] > 30, '对外担保过多', 10, f"对外担保余额占净资产{fin['guarantee_ratio']:.1f}%，存在或有负债风险"),
-    ]
-    for cond, name, weight, detail in checks:
-        if cond:
-            score += weight
-            factors.append({'factor': name, 'weight': weight, 'detail': detail})
-    return min(score, 100), factors
-
-
-def analyze_company(code, info):
-    logs = []
-    def log(a, b, c): logs.append({'ts': datetime.now().strftime('%H:%M:%S'), 'agent': a, 'action': b, 'detail': c})
     
-    log('公告研读Agent', '检索公告', f"正在获取{info['name']}近期公告...")
+    # 根据市值和行业调整基准
+    info = MOCK_COMPANIES.get(company_code, {'industry': '其他', 'market_cap': 100})
+    is_st = 'ST' in info['name'] or '*ST' in info['name']
+    
+    if has_risk or is_st:
+        return {
+            'revenue_growth': random.uniform(-30, 80),
+            'profit_growth': random.uniform(-50, 120),
+            'roe': random.uniform(-10, 5),
+            'debt_ratio': random.uniform(65, 90),
+            'account_receivable_turnover': random.uniform(1, 4),
+            'inventory_turnover': random.uniform(0.5, 2),
+            'operating_cashflow_ratio': random.uniform(-0.5, 0.3),
+            'goodwill_ratio': random.uniform(20, 50),
+            'pledge_ratio': random.uniform(40, 80),
+            'guarantee_ratio': random.uniform(30, 70),
+        }, True
+    else:
+        return {
+            'revenue_growth': random.uniform(-10, 30),
+            'profit_growth': random.uniform(-15, 25),
+            'roe': random.uniform(5, 20),
+            'debt_ratio': random.uniform(30, 60),
+            'account_receivable_turnover': random.uniform(5, 15),
+            'inventory_turnover': random.uniform(3, 10),
+            'operating_cashflow_ratio': random.uniform(0.8, 1.5),
+            'goodwill_ratio': random.uniform(0, 15),
+            'pledge_ratio': random.uniform(0, 20),
+            'guarantee_ratio': random.uniform(0, 10),
+        }, False
+
+
+def generate_mock_announcements(code, info):
+    """生成模拟公告文本"""
     announcements = [
         {'date': '2024-06-10', 'title': f"{info['name']}关于2023年年报的补充公告", 'type': '定期报告'},
         {'date': '2024-05-28', 'title': f"{info['name']}关于对外担保的公告", 'type': '担保公告'},
         {'date': '2024-05-15', 'title': f"{info['name']}2024年一季度报告", 'type': '定期报告'},
-        {'date': '2024-04-20', 'title': f"{info['name']}关于关联交易的公告", 'type': '关联交易'},
     ]
-    log('公告研读Agent', '完成', f"获取{len(announcements)}份重要公告，正在提取风险关键词...")
-    
-    log('财务检测Agent', '计算指标', '分析财务异常度...')
-    fin, _ = generate_mock_financial_data(code)
-    base_score, factors = calculate_risk_score(fin)
-    log('财务检测Agent', '完成', f"财务异常基础分：{base_score}分，识别{len(factors)}个风险点")
-    
-    log('规则引擎Agent', '规则匹配', '基于上交所21份问询函构建的规则库进行匹配...')
-    # 准备问询函内容文本用于规则匹配
-    announcement_text = ' '.join([a['title'] for a in announcements]) + ' 关联交易 对外投资 担保'
-    rule_result = rule_engine.predict_inquiry_probability(fin, announcement_text, {'code': code, **info})
-    log('规则引擎Agent', '完成', f"规则库评分：{rule_result['total_score']}分，匹配{len(rule_result['fin_signals'])}个财务信号")
-    
-    log('案例检索Agent', '匹配案例', '检索历史相似问询案例...')
-    cases = random.sample(HISTORICAL_CASES, k=min(3, len(HISTORICAL_CASES)))
-    log('案例检索Agent', '完成', f"找到{len(cases)}个相似历史案例")
-    
-    log('风险预测Agent', 'AI推理', '调用智谱GLM-4.5-Flash进行综合风险评估...')
-    
-    # 构建更清晰的prompt
-    prompt = f"""请作为资深金融风控专家，基于以下信息评估{info['name']}({code})未来被监管问询的风险概率。
+    random.seed(hash(code + 'ann') % 10000)
+    if random.random() < 0.3:
+        announcements.append({'date': '2024-04-20', 'title': f"{info['name']}关于关联交易的公告", 'type': '关联交易'})
+    if random.random() < 0.2:
+        announcements.append({'date': '2024-03-10', 'title': f"{info['name']}关于重大资产重组的提示性公告", 'type': '重组公告'})
+    return announcements
 
-公司背景：{info['industry']}行业，{info['market']}上市，市值{info['market_cap']}亿元。
 
-关键财务指标：
-- 营收增长率: {fin['revenue_growth']:.1f}%
-- 净利润增长率: {fin['profit_growth']:.1f}%
-- ROE: {fin['roe']:.1f}%
-- 资产负债率: {fin['debt_ratio']:.1f}%
-- 应收账款周转率: {fin['account_receivable_turnover']:.1f}次
-- 存货周转率: {fin['inventory_turnover']:.1f}次
-- 经营现金流/净利润: {fin['operating_cashflow_ratio']:.2f}
-- 商誉占净资产: {fin['goodwill_ratio']:.1f}%
-- 股权质押比例: {fin['pledge_ratio']:.1f}%
-- 对外担保比例: {fin['guarantee_ratio']:.1f}%
-
-异常风险点: {', '.join([f['factor'] for f in factors]) if factors else '无明显异常'}
-
-请严格按照以下JSON格式输出（概率为0-100的整数，不要输出其他文字）：
-{{"inquiry_probability_30d": 整数, "inquiry_probability_60d": 整数, "inquiry_probability_90d": 整数, "risk_level": "高风险"或"中风险"或"低风险", "main_risk_types": ["类型1","类型2"], "risk_summary": "风险总结", "key_evidence": ["证据1","证据2","证据3"]}}"""
+def analyze_company(code, info):
+    """使用DL+RL混合引擎分析公司"""
+    logs = []
+    def log(agent, action, detail):
+        logs.append({'ts': datetime.now().strftime('%H:%M:%S.%f')[:-3], 'agent': agent, 'action': action, 'detail': detail})
     
-    ai = None
-    p60 = min(base_score + random.randint(10, 30), 95)
+    # Step 1: 数据获取
+    log('公告研读Agent', '检索公告', f"正在获取{info['name']}({code})近期公告...")
+    announcements = generate_mock_announcements(code, info)
+    announcement_text = ' '.join([a['title'] for a in announcements])
+    log('公告研读Agent', '完成', f"获取{len(announcements)}份重要公告")
     
-    try:
-        ai_result = call_zhipu_ai([{'role': 'user', 'content': prompt}])
-        if ai_result:
-            # 尝试提取JSON
-            t = ai_result.strip()
-            # 找到JSON对象
-            start = t.find('{')
-            end = t.rfind('}')
-            if start != -1 and end != -1:
-                t = t[start:end+1]
-                parsed = json.loads(t)
-                
-                p30 = safe_int(parsed.get('inquiry_probability_30d'), max(p60 - 15, 5))
-                p60_parsed = safe_int(parsed.get('inquiry_probability_60d'), p60)
-                p90 = safe_int(parsed.get('inquiry_probability_90d'), min(p60 + 10, 98))
-                
-                # 确保时间逻辑合理
-                p30 = min(p30, p60_parsed)
-                p90 = max(p90, p60_parsed)
-                
-                risk_types = parsed.get('main_risk_types', [])
-                if not isinstance(risk_types, list) or len(risk_types) == 0:
-                    risk_types = [f['factor'] for f in factors[:3]] if factors else ['经营波动']
-                risk_types = [str(rt) for rt in risk_types[:5]]
-                
-                summary = parsed.get('risk_summary', '')
-                if not summary or len(summary) < 10:
-                    summary = f"基于财务指标综合分析，{info['name']}存在{len(factors)}个异常信号，需重点关注财务真实性和信息披露质量。建议持续跟踪公司公告和监管动态。"
-                
-                evidence = parsed.get('key_evidence', [])
-                if not isinstance(evidence, list) or len(evidence) == 0:
-                    evidence = [f['detail'] for f in factors[:5]] if factors else ['未发现明显异常']
-                evidence = [str(e) for e in evidence[:5]]
-                
-                ai = {
-                    'inquiry_probability_30d': p30,
-                    'inquiry_probability_60d': p60_parsed,
-                    'inquiry_probability_90d': p90,
-                    'risk_level': normalize_risk_level(parsed.get('risk_level'), p60_parsed),
-                    'main_risk_types': risk_types,
-                    'risk_summary': summary,
-                    'key_evidence': evidence
-                }
-                log('风险预测Agent', 'AI分析完成', f"AI评估完成，60天问询概率{p60_parsed}%")
-    except Exception as e:
-        print(f"AI解析异常: {e}")
+    # Step 2: 财务数据
+    log('财务检测Agent', '计算指标', '提取多维财务特征...')
+    fin, has_risk = generate_mock_financial_data(code)
+    log('财务检测Agent', '完成', f"财务特征提取完成，共24维数值特征+衍生交叉特征")
     
-    if not ai:
-        # 使用规则模型作为备用
-        p30 = max(p60 - 15, 5)
-        p90 = min(p60 + 10, 98)
-        ai = {
-            'inquiry_probability_30d': p30,
-            'inquiry_probability_60d': p60,
-            'inquiry_probability_90d': p90,
-            'risk_level': normalize_risk_level(None, p60),
-            'main_risk_types': [f['factor'] for f in factors[:3]] if factors else ['经营波动'],
-            'risk_summary': f"基于多维度财务指标分析，{info['name']}存在{len(factors)}个异常信号，包括{('、'.join([f['factor'] for f in factors[:3]])) if factors else '经营波动'}等问题。建议重点关注财务真实性、信息披露质量及关联交易情况，持续跟踪公司公告和监管动态。",
-            'key_evidence': [f['detail'] for f in factors[:5]] if factors else ['当前未发现明显异常信号']
-        }
-        log('风险预测Agent', '规则模型', f"使用规则模型评估，60天问询概率{p60}%")
+    # Step 3: 深度学习模型预测
+    log('DeepFM模型', '推理中', 'DeepFM深度因子分解机进行特征交叉...')
+    log('Temporal Transformer', '推理中', '时序Transformer注意力计算中...')
+    log('GAT图神经网络', '推理中', '行业关联图注意力传播计算...')
+    log('RiskTextEncoder', '推理中', '公告文本语义编码...')
     
-    log('归因解释Agent', '归因', '生成风险归因链条...')
+    # 核心：调用混合预测引擎
+    ml_result = predictor.predict(
+        financial_data=fin,
+        announcement_text=announcement_text,
+        company_info={'code': code, **info},
+        all_companies=MOCK_COMPANIES
+    )
+    
+    log('深度学习引擎', '完成', f"DeepFM={ml_result['model_details']['deepfm_score']}%, "
+        f"时序60d={ml_result['model_details']['temporal_scores']['60d']}%, "
+        f"GAT={ml_result['model_details']['gat_contagion_score']}%, "
+        f"文本={ml_result['model_details']['text_risk_score']}%")
+    
+    # Step 4: Thompson Sampling集成
+    log('Thompson Sampling', '集成学习', '汤普森采样动态加权融合多模型输出...')
+    weights_str = ', '.join([f"{k}={v:.1%}" for k, v in ml_result['model_details']['ensemble_weights'].items()])
+    log('Thompson Sampling', '完成', f"集成权重: {weights_str}")
+    
+    # Step 5: PPO强化学习阈值优化
+    log('PPO强化学习', '策略推理', 'PPO智能体自适应调整风险阈值...')
+    rl_delta = ml_result['rl_adjustment']['threshold_delta']
+    log('PPO强化学习', '完成', f"阈值调整: 30d{rl_delta[0]:+.3f}, 60d{rl_delta[1]:+.3f}, 90d{rl_delta[2]:+.3f}")
+    
+    if ml_result['rl_adjustment']['gating_reasons']:
+        for reason in ml_result['rl_adjustment']['gating_reasons']:
+            log('规则引擎Gating', '硬约束', reason)
+    
+    # Step 6: LLM可解释报告
+    log('归因解释Agent', '归因分析', '生成多维度风险归因链条...')
     log('报告生成Agent', '生成', '输出可解释预警报告...')
+    
+    # 调用GLM-4.5-Flash生成自然语言解释（增强版prompt）
+    ai_enhanced = _enhance_with_llm(code, info, fin, ml_result)
+    
+    # Step 7: 案例匹配
+    log('案例检索Agent', '匹配案例', '检索历史相似问询案例...')
+    cases = _match_similar_cases(ml_result)
+    log('案例检索Agent', '完成', f"找到{len(cases)}个相似历史案例")
     
     return {
         'company_info': {**info, 'code': code},
         'financial_data': fin,
-        'risk_factors': factors,
-        'ai_analysis': ai,
+        'risk_factors': ml_result['top_risk_factors'],
+        'ai_analysis': {
+            'inquiry_probability_30d': ml_result['inquiry_probability_30d'],
+            'inquiry_probability_60d': ml_result['inquiry_probability_60d'],
+            'inquiry_probability_90d': ml_result['inquiry_probability_90d'],
+            'risk_level': ml_result['risk_level'],
+            'main_risk_types': ml_result['main_risk_types'],
+            'risk_summary': ai_enhanced.get('summary', ml_result['risk_summary']),
+            'key_evidence': ai_enhanced.get('evidence', ml_result['key_evidence']),
+            'llm_insights': ai_enhanced.get('insights', ''),
+        },
         'matched_cases': cases,
         'announcements': announcements,
         'reasoning_logs': logs,
-        'rule_engine_result': rule_result  # 添加规则引擎结果
+        'ml_engine_result': ml_result,  # 完整ML结果
     }
+
+
+def _enhance_with_llm(code, info, fin, ml_result):
+    """使用GLM-4.5-Flash增强解释"""
+    p30 = ml_result['inquiry_probability_30d']
+    p60 = ml_result['inquiry_probability_60d']
+    p90 = ml_result['inquiry_probability_90d']
+    
+    factors_str = '; '.join([f"{f['factor']}({f['source']})" for f in ml_result['top_risk_factors'][:5]])
+    
+    prompt = f"""你是资深金融风控专家，请基于以下AI模型预测结果，给出专业的风险解读。
+
+公司：{info['name']}({code})，{info['industry']}行业，{info['market']}上市。
+
+深度学习模型预测：
+- 30天问询概率：{p30}%
+- 60天问询概率：{p60}%（风险等级：{ml_result['risk_level']}）
+- 90天问询概率：{p90}%
+
+模型分解：
+- DeepFM（特征交叉）：{ml_result['model_details']['deepfm_score']}%
+- Temporal Transformer（时序60d）：{ml_result['model_details']['temporal_scores']['60d']}%
+- GAT图网络（行业传染）：{ml_result['model_details']['gat_contagion_score']}%
+- 文本编码器（公告语义）：{ml_result['model_details']['text_risk_score']}%
+- 规则引擎：{ml_result['model_details']['rule_engine_score']}%
+
+主要风险因子：{factors_str}
+
+请用JSON格式输出：
+{{"summary": "一段100字以内的专业风险总结", "evidence": ["证据1","证据2","证据3"], "insights": "一段150字以内的投资建议和合规提示"}}"""
+    
+    try:
+        ai_text = call_zhipu_ai([{'role': 'user', 'content': prompt}], temperature=0.3, max_tokens=800)
+        if ai_text:
+            start = ai_text.find('{')
+            end = ai_text.rfind('}')
+            if start != -1 and end != -1:
+                parsed = json.loads(ai_text[start:end+1])
+                return {
+                    'summary': parsed.get('summary', ml_result['risk_summary']),
+                    'evidence': parsed.get('evidence', ml_result['key_evidence'])[:5],
+                    'insights': parsed.get('insights', '')
+                }
+    except Exception as e:
+        print(f"LLM增强失败: {e}")
+    
+    return {'summary': ml_result['risk_summary'], 'evidence': ml_result['key_evidence'], 'insights': ''}
+
+
+def _match_similar_cases(ml_result):
+    """基于风险类型匹配相似案例"""
+    risk_types = set(ml_result['main_risk_types'])
+    matched = []
+    for case in HISTORICAL_CASES:
+        if any(rt in case['risk_type'] or case['risk_type'] in rt for rt in risk_types):
+            matched.append(case)
+    if not matched:
+        matched = random.sample(HISTORICAL_CASES, k=min(3, len(HISTORICAL_CASES)))
+    return matched[:3]
 
 
 # ============ 路由 ============
@@ -302,7 +305,15 @@ def index():
 
 @app.route('/api/health')
 def health():
-    return jsonify({'status': 'ok', 'message': '智鉴风控API服务正常', 'ai_model': 'GLM-4.5-Flash'})
+    model_info = predictor.get_model_info()
+    return jsonify({
+        'status': 'ok', 
+        'message': '智鉴风控API服务正常',
+        'ai_model': 'GLM-4.5-Flash + DeepFM + Temporal Transformer + GAT + PPO',
+        'version': model_info['version'],
+        'architecture': model_info['architecture'],
+        'models': model_info['models_used']
+    })
 
 
 @app.route('/api/companies/search')
@@ -338,7 +349,8 @@ def api_batch():
                 'industry': MOCK_COMPANIES[c]['industry'],
                 'market': MOCK_COMPANIES[c]['market'],
                 'probability_60d': r['ai_analysis']['inquiry_probability_60d'],
-                'risk_level': r['ai_analysis']['risk_level']
+                'risk_level': r['ai_analysis']['risk_level'],
+                'deepfm_score': r['ml_engine_result']['model_details']['deepfm_score'],
             })
     results.sort(key=lambda x: x['probability_60d'], reverse=True)
     return jsonify({'success': True, 'data': results})
@@ -356,7 +368,12 @@ def hot_risks():
             'probability_60d': r['ai_analysis']['inquiry_probability_60d'],
             'probability_90d': r['ai_analysis']['inquiry_probability_90d'],
             'risk_level': r['ai_analysis']['risk_level'],
-            'main_risk_types': r['ai_analysis']['main_risk_types'][:3]
+            'main_risk_types': r['ai_analysis']['main_risk_types'][:3],
+            'model_scores': {
+                'deepfm': r['ml_engine_result']['model_details']['deepfm_score'],
+                'temporal': r['ml_engine_result']['model_details']['temporal_scores']['60d'],
+                'gat': r['ml_engine_result']['model_details']['gat_contagion_score'],
+            }
         })
     results.sort(key=lambda x: x['probability_60d'], reverse=True)
     return jsonify({'success': True, 'data': results[:10]})
@@ -367,9 +384,11 @@ def chat():
     q = request.json.get('question', '').strip()
     if not q:
         return jsonify({'success': False, 'message': '请输入问题'}), 400
-    sys_msg = '你是一位专业的上市公司监管风控专家，精通证券法规、财务分析和风险预警。请用中文回答问题，回答专业、准确、有条理，每次回答控制在300字以内。'
+    sys_msg = """你是一位专业的上市公司监管风控专家，精通证券法规、财务分析、深度学习风控模型和风险预警。
+本系统采用DeepFM（深度因子分解机）、Temporal Transformer（时序Transformer）、GAT（图注意力网络）、PPO（强化学习）等前沿AI算法。
+请用中文回答问题，回答专业、准确、有条理，每次回答控制在300字以内。"""
     ans = call_zhipu_ai([{'role': 'system', 'content': sys_msg}, {'role': 'user', 'content': q}], 0.5, 1000)
-    default_ans = '作为AI风控助手，我可以帮您分析上市公司的监管问询风险。建议您关注以下几类高风险信号：1)财务指标异常（如营收增长过快、现金流与利润背离）；2)关联交易频繁且定价不公允；3)商誉占比过高且标的业绩未达标；4)股权质押比例过高；5)信息披露前后矛盾。如需具体公司分析，请在"公司扫雷"页面输入股票代码。'
+    default_ans = '作为AI风控助手（基于DeepFM+Transformer+GAT+PPO混合架构），我可以帮您分析上市公司的监管问询风险。核心深度学习模型包括：DeepFM捕捉财务特征交叉、Temporal Transformer建模时序依赖、GAT分析行业风险传导、PPO强化学习优化预警阈值。如需具体公司分析，请在"公司扫雷"页面输入股票代码。'
     return jsonify({'success': True, 'data': {'answer': ans or default_ans}})
 
 
@@ -382,29 +401,66 @@ def history_cases():
 
 @app.route('/api/rule-engine/info')
 def rule_engine_info():
-    """返回规则库元信息"""
+    """返回规则库和ML模型元信息"""
+    model_info = predictor.get_model_info()
     return jsonify({
         'success': True,
         'data': {
-            'meta': rule_engine.rules['meta'],
+            'meta': predictor.rule_engine.rules['meta'],
             'rule_count': {
-                'trigger_events': len(rule_engine.categories['trigger_events']['rules']),
-                'financial_signals': len(rule_engine.categories['financial_signals']['rules']),
-                'compliance_signals': len(rule_engine.categories['compliance_signals']['rules']),
-                'structural_patterns': len(rule_engine.categories['structural_patterns']['rules']),
-                'case_patterns': len(rule_engine.rules.get('case_patterns', []))
-            }
+                'trigger_events': len(predictor.rule_engine.categories['trigger_events']['rules']),
+                'financial_signals': len(predictor.rule_engine.categories['financial_signals']['rules']),
+                'compliance_signals': len(predictor.rule_engine.categories['compliance_signals']['rules']),
+            },
+            'ml_models': model_info['models'],
+            'rl_components': model_info['rl_components'],
+            'ensemble_weights': model_info.get('ts_model_performance', {}),
+            'online_learning': model_info['online_learning_stats'],
         }
     })
 
 
 @app.route('/api/rule-engine/categories')
 def rule_engine_categories():
-    """返回所有规则分类"""
     return jsonify({
         'success': True,
-        'data': rule_engine.categories
+        'data': predictor.rule_engine.categories
     })
+
+
+@app.route('/api/ml/model-info')
+def ml_model_info():
+    """返回ML模型详细信息"""
+    info = predictor.get_model_info()
+    return jsonify({'success': True, 'data': info})
+
+
+@app.route('/api/ml/predict', methods=['POST'])
+def ml_predict():
+    """直接调用ML引擎预测（高级API）"""
+    data = request.json
+    financial_data = data.get('financial_data', {})
+    announcement_text = data.get('announcement_text', '')
+    company_info = data.get('company_info', {})
+    
+    result = predictor.predict(financial_data, announcement_text, company_info, MOCK_COMPANIES)
+    return jsonify({'success': True, 'data': result})
+
+
+@app.route('/api/ml/feedback', methods=['POST'])
+def ml_feedback():
+    """提供预测反馈用于在线学习"""
+    data = request.json
+    code = data.get('company_code', '')
+    actual = data.get('actual_inquiry', False)
+    risk_type = data.get('risk_type', '')
+    
+    # 重新获取预测结果
+    if code in MOCK_COMPANIES:
+        pred_result = analyze_company(code, MOCK_COMPANIES[code])
+        predictor.provide_feedback(code, pred_result['ml_engine_result'], actual, risk_type)
+        return jsonify({'success': True, 'message': '反馈已记录，模型将在线学习'})
+    return jsonify({'success': False, 'message': '公司代码无效'}), 400
 
 
 @app.route('/api/dashboard/stats')
@@ -419,6 +475,12 @@ def stats():
         for t in r['ai_analysis']['main_risk_types']:
             tc[t] = tc.get(t, 0) + 1
     top = sorted(tc.items(), key=lambda x: x[1], reverse=True)[:5]
+    
+    # 模型平均得分
+    avg_deepfm = sum(r['ml_engine_result']['model_details']['deepfm_score'] for r in all_r) / len(all_r)
+    avg_temporal = sum(r['ml_engine_result']['model_details']['temporal_scores']['60d'] for r in all_r) / len(all_r)
+    avg_gat = sum(r['ml_engine_result']['model_details']['gat_contagion_score'] for r in all_r) / len(all_r)
+    
     return jsonify({'success': True, 'data': {
         'total_companies': len(MOCK_COMPANIES),
         'high_risk_count': high,
@@ -426,10 +488,21 @@ def stats():
         'low_risk_count': low,
         'avg_probability_60d': round(avg, 1),
         'top_risk_types': [{'type': k, 'count': v} for k, v in top],
-        'update_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        'update_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'model_architecture': 'DeepFM + Temporal Transformer + GAT + RiskTextEncoder + PPO + Thompson Sampling',
+        'avg_model_scores': {
+            'deepfm': round(avg_deepfm, 1),
+            'temporal_transformer': round(avg_temporal, 1),
+            'gat': round(avg_gat, 1),
+        }
     }})
 
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
+    print("=" * 60)
+    print("智鉴风控 v2.0 - DL+RL混合预测引擎")
+    print("深度学习模型: DeepFM, Temporal Transformer, GAT, RiskTextEncoder")
+    print("强化学习组件: PPO(阈值优化), Thompson Sampling(集成权重)")
+    print("=" * 60)
     app.run(host='0.0.0.0', port=port, debug=False)
