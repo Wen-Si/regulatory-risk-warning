@@ -28,6 +28,14 @@ from flask_cors import CORS
 # 导入混合预测引擎 v3.0（默认启用安全层和知识图谱）
 sys.path.insert(0, os.path.dirname(__file__))
 from ml_engine import HybridPredictor
+from market_data import (
+    get_market_stats_summary,
+    get_exchange_distribution,
+    get_risk_type_distribution,
+    MARKET_OVERVIEW,
+    INQUIRY_STATS_2025,
+    RISK_TYPE_DISTRIBUTION_2025,
+)
 predictor = HybridPredictor(use_rl=True, use_safety=True, use_kg=True)
 
 app = Flask(__name__, static_folder='static', static_url_path='')
@@ -93,8 +101,21 @@ def html_escape(text):
                 .replace('"', '&quot;')
                 .replace("'", '&#x27;'))
 
-# 模拟上市公司数据库
+# 真实上市公司数据（基于2026年公开披露）
 MOCK_COMPANIES = {
+    # 2026年已收到问询函的上市公司
+    '600381': {'name': '青海春天', 'industry': '医药', 'market': '上交所', 'market_cap': 23},
+    '605081': {'name': '太和水', 'industry': '环保', 'market': '上交所', 'market_cap': 8},
+    '603843': {'name': '正平路桥', 'industry': '基建', 'market': '上交所', 'market_cap': 15},
+    '601099': {'name': '太平洋证券', 'industry': '证券', 'market': '上交所', 'market_cap': 320},
+    '688157': {'name': '松井股份', 'industry': '新材料', 'market': '上交所科创板', 'market_cap': 35},
+    '688225': {'name': '亚信安全', 'industry': '网络安全', 'market': '上交所科创板', 'market_cap': 120},
+    '688030': {'name': '山石网科', 'industry': '网络安全', 'market': '上交所科创板', 'market_cap': 28},
+    '688302': {'name': '海创药业', 'industry': '生物医药', 'market': '上交所科创板', 'market_cap': 45},
+    '688005': {'name': '容百科技', 'industry': '锂电池', 'market': '上交所科创板', 'market_cap': 180},
+    '600481': {'name': '双良节能', 'industry': '节能环保', 'market': '上交所', 'market_cap': 95},
+    '688209': {'name': '英集芯', 'industry': '半导体', 'market': '上交所科创板', 'market_cap': 65},
+    # 蓝筹股
     '600000': {'name': '浦发银行', 'industry': '银行', 'market': '上交所', 'market_cap': 2800},
     '601318': {'name': '中国平安', 'industry': '保险', 'market': '上交所', 'market_cap': 8500},
     '000001': {'name': '平安银行', 'industry': '银行', 'market': '深交所', 'market_cap': 2200},
@@ -106,6 +127,7 @@ MOCK_COMPANIES = {
     '600036': {'name': '招商银行', 'industry': '银行', 'market': '上交所', 'market_cap': 9500},
     '000333': {'name': '美的集团', 'industry': '家电', 'market': '深交所', 'market_cap': 4200},
     '688981': {'name': '中芯国际', 'industry': '半导体', 'market': '上交所科创板', 'market_cap': 4800},
+    # 北交所
     '834765': {'name': '美之高', 'industry': '家居用品', 'market': '北交所', 'market_cap': 8},
     '430047': {'name': '诺思兰德', 'industry': '生物医药', 'market': '北交所', 'market_cap': 35},
     '835185': {'name': '贝特瑞', 'industry': '锂电池材料', 'market': '北交所', 'market_cap': 280},
@@ -118,36 +140,92 @@ RISK_CATEGORIES = [
 ]
 
 HISTORICAL_CASES = [
+    # 2026年真实公开问询案例
     {
-        'case_id': 'CASE001', 'company': '某ST公司', 'date': '2023-08-15',
+        'case_id': 'CASE2026001', 'company': '正平路桥', 'code': '603843', 'date': '2026-05-11',
+        'reason': '2025年年报财务资料缺失及非标意见化解', 'risk_type': '信息披露违规',
+        'key_points': ['财务资料缺失', '审计意见非标', '持续经营存疑', '内控有效性存疑'],
+        'outcome': '上交所要求补充披露，上证公函【2026】0819号'
+    },
+    {
+        'case_id': 'CASE2026002', 'company': '太平洋证券', 'code': '601099', 'date': '2026-05-27',
+        'reason': '2025年年报业绩逆势下滑及减值原因', 'risk_type': '财务异常',
+        'key_points': ['经营业绩大幅下滑', '信用业务风险', '债权投资减值异常', '资管业务风险'],
+        'outcome': '上交所年报问询函，要求详细说明原因'
+    },
+    {
+        'case_id': 'CASE2026003', 'company': '亚信安全', 'code': '688225', 'date': '2026-05-20',
+        'reason': '2025年年报信息披露相关问题', 'risk_type': '信息披露违规',
+        'key_points': ['年报信披不充分', '收入确认时点', '研发支出资本化', '客户集中度'],
+        'outcome': '上交所科创板年报问询函，上证科创公函【2026】0195号'
+    },
+    {
+        'case_id': 'CASE2026004', 'company': '松井股份', 'code': '688157', 'date': '2026-05-15',
+        'reason': '2025年净利润大幅下滑76.66%及投资支出异常', 'risk_type': '业绩变脸',
+        'key_points': ['归母净利润下滑76.66%', '单项坏账准备大幅上升', '投资支出大幅波动', '应收账款大额计提'],
+        'outcome': '上交所科创板年报监管问询函'
+    },
+    {
+        'case_id': 'CASE2026005', 'company': '山石网科', 'code': '688030', 'date': '2026-05-20',
+        'reason': '2025年年报相关事项', 'risk_type': '财务异常',
+        'key_points': ['审计意见非标', '收入确认合规性', '减值测试合理性', '内控缺陷'],
+        'outcome': '上交所科创板年报问询函，会计师事务所专项核查'
+    },
+    {
+        'case_id': 'CASE2026006', 'company': '海创药业', 'code': '688302', 'date': '2026-05-25',
+        'reason': '研发管线与商业化进展披露充分性', 'risk_type': '信息披露违规',
+        'key_points': ['研发管线披露不充分', '临床试验进展', '研发投入资本化', '商业化路径'],
+        'outcome': '上交所科创板年报问询函'
+    },
+    {
+        'case_id': 'CASE2026007', 'company': '青海春天', 'code': '600381', 'date': '2026-05-19',
+        'reason': '*ST春天2025年年报有关事项', 'risk_type': '信息披露违规',
+        'key_points': ['年报披露存疑', '持续经营能力', '财务数据真实性', '内控有效性'],
+        'outcome': '上交所定期报告信息披露监管问询函'
+    },
+    {
+        'case_id': 'CASE2026008', 'company': '太和水', 'code': '605081', 'date': '2026-04-19',
+        'reason': '股票预计触及财务类终止上市情形', 'risk_type': '退市风险',
+        'key_points': ['财务类退市指标', '净利润为负+营收不足', '审计意见非标', '持续经营能力存疑'],
+        'outcome': '上交所监管工作函，关注退市风险'
+    },
+    {
+        'case_id': 'CASE2026009', 'company': '双良节能', 'code': '600481', 'date': '2026-04-03',
+        'reason': '误导性陈述', 'risk_type': '信息披露违规',
+        'key_points': ['公告表述不准确', '重大事项误导', '信息披露不充分'],
+        'outcome': '证监会行政处罚决定书'
+    },
+    {
+        'case_id': 'CASE2026010', 'company': '英集芯', 'code': '688209', 'date': '2026-04-03',
+        'reason': '误导性陈述', 'risk_type': '信息披露违规',
+        'key_points': ['公告误导性表述', '重大事项披露不实', '投资者决策误导'],
+        'outcome': '证监会行政处罚决定书'
+    },
+    {
+        'case_id': 'CASE2026011', 'company': '容百科技', 'code': '688005', 'date': '2026-05-15',
+        'reason': '5个交易日内回复交易所问询', 'risk_type': '信息披露违规',
+        'key_points': ['问询回复及时性', '信息披露质量', '关联交易披露'],
+        'outcome': '上交所问询函，已及时回复'
+    },
+    {
+        'case_id': 'CASE2026012', 'company': '先歌国际', 'code': 'IPO', 'date': '2026-06-25',
+        'reason': '北交所上市委第62次会议问询', 'risk_type': 'IPO审核',
+        'key_points': ['经销收入真实性', '经销商分类毛利率', '销售价格公允性', '信用政策一致性'],
+        'outcome': '北交所上市委审议通过'
+    },
+    # 历史经典案例
+    {
+        'case_id': 'CASE2024001', 'company': '某ST公司', 'date': '2023-08-15',
         'reason': '连续三年财务造假，虚增营收', 'risk_type': '财务异常',
         'key_points': ['营收增长率异常高于行业均值', '应收账款周转天数大幅增加', '经营现金流与净利润背离'],
         'outcome': '被实施退市风险警示'
     },
     {
-        'case_id': 'CASE002', 'company': '某科技公司', 'date': '2023-11-22',
-        'reason': '关联交易非关联化，利益输送', 'risk_type': '关联交易',
-        'key_points': ['关联方销售占比过高', '交易价格显失公允', '资金流向异常'],
-        'outcome': '责令整改，相关责任人处罚'
-    },
-    {
-        'case_id': 'CASE003', 'company': '某医药公司', 'date': '2024-01-08',
-        'reason': '商誉减值计提不充分', 'risk_type': '商誉减值',
-        'key_points': ['并购标的业绩承诺未达标', '商誉占净资产比例过高', '减值测试参数不合理'],
-        'outcome': '年报问询函，要求补充披露'
-    },
-    {
-        'case_id': 'CASE004', 'company': '某地产公司', 'date': '2024-03-15',
+        'case_id': 'CASE2024002', 'company': '某地产公司', 'date': '2024-03-15',
         'reason': '违规担保，资金占用', 'risk_type': '违规担保',
         'key_points': ['对外担保余额超净资产', '未履行审议程序', '控股股东资金占用'],
         'outcome': '立案调查，相关股东股份冻结'
     },
-    {
-        'case_id': 'CASE005', 'company': '某新能源公司', 'date': '2024-05-20',
-        'reason': '业绩预告大幅修正', 'risk_type': '业绩预告偏差',
-        'key_points': ['业绩预告由盈转亏', '存货跌价准备计提不足', '应收账款坏账准备计提不充分'],
-        'outcome': '关注函，要求说明差异原因'
-    }
 ]
 
 
@@ -600,6 +678,26 @@ def ml_feedback():
     return jsonify({'success': False, 'message': '公司代码无效'}), 400
 
 
+@app.route('/api/market/overview')
+def market_overview():
+    """全市场真实数据（基于中国上市公司协会2026年4月数据）"""
+    return jsonify({
+        'success': True,
+        'data': {
+            'market': MARKET_OVERVIEW,
+            'inquiry_2025': INQUIRY_STATS_2025,
+            'exchange_distribution': get_exchange_distribution(),
+            'risk_type_distribution': get_risk_type_distribution(),
+            'data_sources': {
+                'market': '中国上市公司协会（CASA）2026年4月月报',
+                'inquiry': '易董《2025年监管机构对上市公司及相关主体的监管处罚统计》',
+                'bse': '北交所官方披露',
+            },
+            'last_updated': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        }
+    })
+
+
 @app.route('/api/dashboard/stats')
 def stats():
     all_r = [analyze_company(c, i) for c, i in MOCK_COMPANIES.items()]
@@ -612,14 +710,18 @@ def stats():
         for t in r['ai_analysis']['main_risk_types']:
             tc[t] = tc.get(t, 0) + 1
     top = sorted(tc.items(), key=lambda x: x[1], reverse=True)[:5]
-    
+
     # 模型平均得分
     avg_deepfm = sum(r['ml_engine_result']['model_details']['deepfm_score'] for r in all_r) / len(all_r)
     avg_temporal = sum(r['ml_engine_result']['model_details']['temporal_scores']['60d'] for r in all_r) / len(all_r)
     avg_gat = sum(r['ml_engine_result']['model_details']['gat_contagion_score'] for r in all_r) / len(all_r)
-    
+
+    # 合并全市场真实数据
+    market_summary = get_market_stats_summary()
+
     return jsonify({'success': True, 'data': {
-        'total_companies': len(MOCK_COMPANIES),
+        # 系统内（演示用样本公司）风险分布
+        'sample_companies': len(MOCK_COMPANIES),
         'high_risk_count': high,
         'medium_risk_count': mid,
         'low_risk_count': low,
@@ -631,7 +733,10 @@ def stats():
             'deepfm': round(avg_deepfm, 1),
             'temporal_transformer': round(avg_temporal, 1),
             'gat': round(avg_gat, 1),
-        }
+        },
+        # 全市场真实数据
+        'market_real_data': market_summary,
+        'risk_type_distribution_2025': RISK_TYPE_DISTRIBUTION_2025,
     }})
 
 
