@@ -31,3 +31,17 @@ instance/
 data/
 backend/__pycache__/
 api/__pycache__/
+
+# 审计日志与安全日志（含PII）
+logs/
+*.jsonl
+audit_*.jsonl
+security_*.jsonl
+
+# PPT生成临时文件
+ppt_images/
+generate_ppt.js
+test_v3.py
+
+# Node modules
+node_modules/

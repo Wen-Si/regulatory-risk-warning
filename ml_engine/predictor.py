@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Hybrid Predictor - 混合预测引擎
-融合深度学习、强化学习与规则引擎的预测流水线
+Hybrid Predictor v3.0 - 混合预测引擎
+融合Harness Engineering安全层、知识图谱、深度学习、强化学习与规则引擎
 
-架构：
-1. 特征工程层：多模态特征提取（数值/文本/图/时序）
-2. 深度学习层：DeepFM + Temporal Transformer + GAT + Text Encoder 四路并行
-3. 集成层：Thompson Sampling动态加权
-4. 强化学习层：PPO自适应阈值调整
-5. 规则引擎层：硬约束gating
-6. 输出层：多窗口概率 + 可解释性报告
+架构（v3.0）：
+0. 输入安全护栏：输入验证、注入检测、PII脱敏（Harness Engineering）
+1. 知识图谱层：监管KG + Graph RAG + 风险推理 + 证据链
+2. 特征工程层：多模态特征提取（数值/文本/图/时序 + KG增强特征）
+3. 深度学习层：DeepFM + Temporal Transformer + GAT + Text Encoder 四路并行
+4. 集成层：Thompson Sampling动态加权 + KG风险评分融合
+5. 强化学习层：PPO自适应阈值调整
+6. 规则引擎层：硬约束gating
+7. 输出安全护栏：合规校验、置信度门控、免责声明
+8. 审计日志：全链路记录
 """
 import numpy as np
 import json
@@ -25,6 +28,10 @@ from .features import FeatureEngineer
 from .models import DeepFM, TemporalTransformer, GATModel, RiskTextEncoder
 # 导入强化学习
 from .rl import PPOAgent, ThompsonSamplingEnsemble, OnlineLearner
+# 导入安全合规层（Harness Engineering）
+from .safety import SafetyHarness
+# 导入知识图谱
+from .knowledge_graph import RegulatoryKG, GraphRAG
 from .config import MLConfig
 
 # 导入规则引擎
@@ -33,16 +40,39 @@ from rule_engine import RuleEngine
 
 
 class HybridPredictor:
-    """智鉴风控 - 混合预测引擎
+    """智鉴风控 - 混合预测引擎 v3.0
     
-    融合DeepFM、Temporal Transformer、GAT图神经网络、FinBERT文本编码器
-    四种深度学习模型，配合PPO强化学习自适应阈值优化和汤普森采样集成，
-    叠加规则引擎硬约束，实现高精度、强可解释的监管问询预测。
+    v3.0新增：
+    - Harness Engineering安全合规层（输入/输出护栏、审计日志、工具防火墙）
+    - 监管金融知识图谱（Graph RAG、风险传播推理、证据链构建）
+    - KG增强的特征工程和预测融合
+    - 全链路审计与合规检查
+    
+    v2.0保留：
+    - DeepFM、Temporal Transformer、GAT、RiskTextEncoder四种DL模型
+    - PPO自适应阈值优化和Thompson Sampling集成
+    - 规则引擎硬约束
     """
     
-    def __init__(self, use_rl=True):
+    def __init__(self, use_rl=True, use_safety=True, use_kg=True):
         self.config = MLConfig
         self.config.ensure_dirs()
+        
+        # v3.0: Harness Engineering安全层
+        self.use_safety = use_safety
+        if use_safety:
+            self.safety_harness = SafetyHarness()
+        else:
+            self.safety_harness = None
+        
+        # v3.0: 知识图谱
+        self.use_kg = use_kg
+        if use_kg:
+            self.kg = RegulatoryKG()
+            self.graph_rag = GraphRAG(self.kg)
+        else:
+            self.kg = None
+            self.graph_rag = None
         
         # 特征工程
         self.feature_engineer = FeatureEngineer()
@@ -89,11 +119,14 @@ class HybridPredictor:
         
         # 模型元信息
         self.model_info = {
-            'version': '2.0.0',
-            'models': ['DeepFM', 'TemporalTransformer', 'GAT', 'RiskTextEncoder'],
+            'version': '3.0.0',
+            'models': ['SafetyHarness', 'KnowledgeGraph', 'DeepFM', 'TemporalTransformer', 
+                      'GAT', 'RiskTextEncoder'],
             'rl_components': ['PPO', 'ThompsonSampling'] if use_rl else [],
+            'safety_components': ['InputGuardrail', 'OutputGuardrail', 'AuditLogger'] if use_safety else [],
+            'kg_components': ['RegulatoryKG', 'GraphRAG'] if use_kg else [],
             'rule_engine': True,
-            'architecture': 'Hybrid DL+RL+Rules'
+            'architecture': 'Hybrid Safety+KG+DL+RL+Rules (Harness Engineering + Graph RAG)'
         }
         
         # 加载检查点（如果存在）
@@ -394,51 +427,120 @@ class HybridPredictor:
     
     def predict(self, financial_data: Dict, announcement_text: str = '', 
                 company_info: Dict = None, all_companies: Dict = None,
-                history: List[Dict] = None) -> Dict[str, Any]:
+                history: List[Dict] = None, session_id: str = '',
+                user_role: str = 'public_user') -> Dict[str, Any]:
         """
-        主预测函数
+        主预测函数 v3.0（安全护栏 + 知识图谱增强）
         
-        Args:
-            financial_data: 财务指标字典
-            announcement_text: 公告文本
-            company_info: 公司信息
-            all_companies: 全市场公司字典（用于图构建）
-            history: 历史财务数据列表
-            
-        Returns:
-            完整预测结果字典
+        流水线：
+        0. 输入安全护栏检查（注入检测、PII脱敏、速率限制）
+        1. 知识图谱Graph RAG检索（风险推理、证据链构建）
+        2. 特征提取（含KG增强特征）
+        3. 规则引擎预测
+        4. 深度学习模型预测
+        5. 集成预测（含KG风险评分融合）
+        6. PPO强化学习阈值调整
+        7. 规则引擎硬约束
+        8. 输出安全护栏检查（合规校验、免责声明）
+        9. 审计日志记录
         """
         company_info = company_info or {}
         start_time = datetime.now()
+        company_code = company_info.get('code', financial_data.get('code', 'UNKNOWN'))
+        company_name = company_info.get('name', '')
         
-        # 1. 特征提取
+        # ====== Step 0: 输入安全护栏（Harness Engineering） ======
+        safety_checks = {'input_passed': True, 'input_warnings': []}
+        masked_text = announcement_text
+        if self.safety_harness:
+            input_check = self.safety_harness.check_input(
+                financial_data=financial_data,
+                announcement_text=announcement_text,
+                company_info=company_info,
+                user_role=user_role,
+                session_id=session_id,
+            )
+            safety_checks['input_passed'] = input_check.passed and not input_check.blocked
+            safety_checks['input_warnings'] = [input_check.details] if input_check.details else []
+            safety_checks['blocked_reasons'] = [t for t in input_check.detected_threats]
+            safety_checks['detected_threats'] = input_check.detected_threats
+            safety_checks['pii_masked'] = input_check.pii_found
+            safety_checks['input_risk_level'] = input_check.risk_level
+            
+            # 使用脱敏后文本
+            masked_text = input_check.sanitized_input if input_check.sanitized_input else announcement_text
+            
+            # 如果被阻断，返回安全响应
+            if input_check.blocked or not input_check.passed:
+                return self._build_blocked_response(
+                    company_code, input_check, start_time
+                )
+        
+        # ====== Step 1: 知识图谱Graph RAG检索 ======
+        kg_knowledge = None
+        kg_rag_context = ''
+        if self.graph_rag:
+            kg_knowledge = self.graph_rag.retrieve_for_company(
+                company_code, company_name, financial_data, masked_text
+            )
+            kg_rag_context = self.graph_rag.get_rag_prompt_context(
+                company_code, company_name, financial_data, masked_text
+            )
+        
+        # ====== Step 2: 特征提取（含KG增强特征） ======
         features = self._extract_all_features(
-            financial_data, announcement_text, company_info, all_companies, history
+            financial_data, masked_text, company_info, all_companies, history
         )
         
-        # 2. 规则引擎预测
+        # KG增强特征拼接
+        if self.kg and company_code:
+            kg_embedding = self.kg.get_enhanced_embedding(company_code)
+            features['kg_enhanced'] = kg_embedding
+        
+        # ====== Step 3: 规则引擎预测 ======
         rule_result = self.rule_engine.predict_inquiry_probability(
-            financial_data, announcement_text, company_info
+            financial_data, masked_text, company_info
         )
         
-        # 3. 深度学习模型预测
-        deep_results = self._run_deep_models(features, announcement_text)
+        # ====== Step 4: 深度学习模型预测 ======
+        deep_results = self._run_deep_models(features, masked_text)
         
-        # 4. 集成预测
+        # ====== Step 5: 集成预测（含KG风险评分融合） ======
         ensemble = self._ensemble_predictions(deep_results, rule_result)
         
-        # 5. PPO强化学习阈值调整
+        # KG风险评分融合
+        kg_score = 0.0
+        if kg_knowledge:
+            kg_score = kg_knowledge.get('kg_risk_score', 0.0)
+            # 将KG评分融入集成概率（权重0.15）
+            ensemble['prob_30d'] = ensemble['prob_30d'] * 0.85 + kg_score * 0.15 * 0.8
+            ensemble['prob_60d'] = ensemble['prob_60d'] * 0.85 + kg_score * 0.15
+            ensemble['prob_90d'] = ensemble['prob_90d'] * 0.85 + kg_score * 0.15 * 1.2
+        
+        # ====== Step 6: PPO强化学习阈值调整 ======
         rl_result = self._apply_rl_threshold(ensemble, deep_results)
         
-        # 6. 规则引擎硬约束
+        # ====== Step 7: 规则引擎硬约束 ======
         final_probs, gating_reasons = self._apply_rule_gating(
             rl_result['adjusted_probs'], rule_result, rule_result.get('fin_signals', [])
         )
         
-        # 7. 归因分析
+        # ====== Step 8: 归因分析（含KG证据链） ======
         attribution = self._generate_attribution(features, deep_results, rule_result, ensemble)
         
-        # 8. 确定最终风险等级和关注点
+        # 融入KG证据链到归因
+        if kg_knowledge and kg_knowledge.get('evidence_chain'):
+            for ev in kg_knowledge['evidence_chain']:
+                attribution['top_risk_factors'].insert(0, {
+                    'factor': '知识图谱推理',
+                    'type': 'KG推理',
+                    'weight': int(kg_score * 20) + 5,
+                    'source': 'Graph RAG',
+                    'detail': ev,
+                })
+            attribution['top_risk_factors'] = attribution['top_risk_factors'][:12]
+        
+        # 确定最终风险等级和关注点
         risk_level = self._get_risk_level(final_probs[1])
         
         # 预测问询可能涉及的问题
@@ -449,14 +551,13 @@ class HybridPredictor:
         # 计算推理时间
         inference_time = (datetime.now() - start_time).total_seconds()
         
-        return {
-            # 核心预测结果
+        # ====== 构建原始结果 ======
+        raw_result = {
             'inquiry_probability_30d': round(float(final_probs[0] * 100), 1),
             'inquiry_probability_60d': round(float(final_probs[1] * 100), 1),
             'inquiry_probability_90d': round(float(final_probs[2] * 100), 1),
             'risk_level': risk_level,
             
-            # 模型详情
             'model_details': {
                 'deepfm_score': round(deep_results['deepfm_prob'] * 100, 1),
                 'temporal_scores': {
@@ -467,16 +568,15 @@ class HybridPredictor:
                 'gat_contagion_score': round(deep_results['gat_score'] * 100, 1),
                 'text_risk_score': round(deep_results['text_risk'] * 100, 1),
                 'rule_engine_score': round(rule_result['total_score'], 1),
+                'kg_risk_score': round(kg_score * 100, 1) if kg_knowledge else 0.0,
                 'ensemble_weights': ensemble['ensemble_weights'],
                 'model_performance': ensemble.get('model_performance', {}),
             },
             
-            # 归因分析
             'attribution': attribution,
             'top_risk_factors': attribution['top_risk_factors'],
             'main_risk_types': list(attribution['risk_type_scores'].keys())[:5],
             
-            # 规则引擎详细结果
             'rule_engine': {
                 'fin_score': rule_result['fin_score'],
                 'comp_score': rule_result['comp_score'],
@@ -487,25 +587,107 @@ class HybridPredictor:
                 'predicted_questions': predicted_questions[:10],
             },
             
-            # RL调整信息
             'rl_adjustment': {
                 'enabled': self.use_rl,
                 'threshold_delta': [float(x) for x in rl_result.get('threshold_adjustment', [0, 0, 0])],
                 'gating_reasons': gating_reasons,
             },
             
-            # 风险总结
+            # v3.0: 知识图谱结果
+            'knowledge_graph': {
+                'enabled': self.use_kg,
+                'kg_risk_score': round(kg_score * 100, 1) if kg_knowledge else 0.0,
+                'evidence_chain': kg_knowledge.get('evidence_chain', []) if kg_knowledge else [],
+                'regulatory_context': kg_knowledge.get('regulatory_context', []) if kg_knowledge else [],
+                'direct_risks': kg_knowledge.get('direct_risks', [])[:5] if kg_knowledge else [],
+                'inferred_risks': kg_knowledge.get('inferred_risks', [])[:5] if kg_knowledge else [],
+                'risk_paths': kg_knowledge.get('risk_paths', [])[:3] if kg_knowledge else [],
+                'rag_context': kg_rag_context,
+            },
+            
             'risk_summary': self._generate_risk_summary(
                 company_info, final_probs, risk_level, attribution['top_risk_factors']
             ),
             'key_evidence': [f['detail'] if 'detail' in f else f['factor'] 
                             for f in attribution['top_risk_factors'][:5]],
             
-            # 元信息
             'meta': {
-                'model_version': self.model_info['version'],
-                'architecture': self.model_info['architecture'],
-                'models_used': self.model_info['models'] + (['PPO', 'ThompsonSampling'] if self.use_rl else []),
+                'model_version': '3.0.0',
+                'architecture': 'Hybrid Safety+KG+DL+RL+Rules (Harness Engineering + Graph RAG)',
+                'models_used': ['SafetyHarness', 'KnowledgeGraph', 'DeepFM', 'TemporalTransformer', 
+                               'GAT', 'RiskTextEncoder'] + (['PPO', 'ThompsonSampling'] if self.use_rl else []) + ['RuleEngine'],
+                'inference_time_ms': round(inference_time * 1000, 1),
+                'prediction_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            }
+        }
+        
+        # ====== Step 9: 输出安全护栏检查（Harness Engineering） ======
+        if self.safety_harness:
+            output_check = self.safety_harness.check_output(raw_result)
+            disclaimer_added = any('disclaimer' in m.lower() or '免责' in m or '风险提示' in m 
+                                   for m in output_check.modifications)
+            safety_info = {
+                'output_passed': output_check.passed,
+                'output_warnings': output_check.warnings,
+                'compliance_issues': output_check.compliance_issues,
+                'modifications': output_check.modifications,
+                'disclaimer_added': disclaimer_added,
+                'needs_human_review': output_check.needs_human_review,
+                'input_threats_blocked': len(safety_checks.get('detected_threats', [])),
+            }
+            # 从filtered_output获取安全处理后的结果
+            safe_result = output_check.filtered_output if output_check.filtered_output else dict(raw_result)
+            safe_result['safety'] = safety_info
+        else:
+            safe_result = dict(raw_result)
+            safe_result['safety'] = {
+                'output_passed': True,
+                'safety_harness_enabled': False,
+            }
+        
+        # ====== Step 10: 审计日志记录 ======
+        audit_id = ''
+        if self.safety_harness:
+            audit_id = self.safety_harness.audit_prediction(
+                company_code=company_code,
+                company_info=company_info,
+                input_data={
+                    'financial_data': financial_data,
+                    'announcement_text': masked_text[:500],  # 只记录前500字符
+                    'has_history': bool(history),
+                },
+                prediction_result=safe_result,
+                safety_checks={
+                    **safety_checks,
+                    'output_passed': safe_result['safety'].get('output_passed', True),
+                },
+            )
+            safe_result['meta']['audit_id'] = audit_id
+        
+        return safe_result
+    
+    def _build_blocked_response(self, company_code: str, input_check, 
+                                 start_time: datetime) -> Dict[str, Any]:
+        """构建输入被阻断时的安全响应"""
+        inference_time = (datetime.now() - start_time).total_seconds()
+        return {
+            'error': 'input_blocked',
+            'blocked': True,
+            'message': '输入安全检查未通过，请求已被阻断',
+            'reasons': input_check.detected_threats,
+            'details': input_check.details,
+            'risk_level': '未评估',
+            'inquiry_probability_30d': None,
+            'inquiry_probability_60d': None,
+            'inquiry_probability_90d': None,
+            'safety': {
+                'input_passed': False,
+                'blocked_reasons': input_check.detected_threats,
+                'detected_threats': input_check.detected_threats,
+                'input_risk_level': input_check.risk_level,
+            },
+            'meta': {
+                'model_version': '3.0.0',
                 'inference_time_ms': round(inference_time * 1000, 1),
                 'prediction_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             }

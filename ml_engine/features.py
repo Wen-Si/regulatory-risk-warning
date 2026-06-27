@@ -180,8 +180,9 @@ class FeatureEngineer:
         digit_ratio = sum(c.isdigit() for c in text) / max(len(text), 1)
         
         # 组合成128维向量（关键词特征 + 随机投影模拟BERT embedding）
-        np.random.seed(42)
-        proj_matrix = np.random.randn(12, 118).astype(np.float32) * 0.1
+        # 使用局部随机生成器，不修改全局numpy随机状态
+        rng = np.random.default_rng(42)
+        proj_matrix = rng.standard_normal((12, 118)).astype(np.float32) * 0.1
         base = np.concatenate([keyword_freq, [text_len, digit_ratio]])
         projected = base @ proj_matrix
         

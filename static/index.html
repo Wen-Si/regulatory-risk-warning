@@ -691,10 +691,100 @@
     </div>
 
     <script>
-        // API配置 - 自动检测环境
-        const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
-            ? 'http://localhost:5000/api' 
-            : '/api';
+        // 全局HTML转义/消毒函数（XSS防护，必须在所有事件处理之前定义）
+        function escapeHtml(str) {
+            if (str === null || str === undefined) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+        // 简单的HTML消毒：移除所有script标签和on*事件处理器，只保留基本格式标签
+        function sanitizeHtml(html) {
+            if (!html) return '';
+            // 创建临时DOM元素
+            const tmp = document.createElement('div');
+            tmp.innerHTML = html;
+            // 移除script标签
+            tmp.querySelectorAll('script').forEach(el => el.remove());
+            // 移除所有on*事件属性
+            tmp.querySelectorAll('*').forEach(el => {
+                const attrs = [...el.attributes];
+                attrs.forEach(attr => {
+                    if (attr.name.startsWith('on')) el.removeAttribute(attr.name);
+                    if (attr.name === 'href' && attr.value.startsWith('javascript:')) el.removeAttribute('href');
+                });
+            });
+            return tmp.innerHTML;
+        }
+
+        // API配置 - 自动检测环境（支持GitHub Pages演示模式）
+        const IS_LOCAL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        const IS_GITHUB_PAGES = window.location.hostname.endsWith('github.io');
+        const API_BASE = IS_LOCAL ? 'http://localhost:5000/api' : '/api';
+        let DEMO_MODE = IS_GITHUB_PAGES; // GitHub Pages自动进入演示模式
+        
+        // 演示模式横幅（检测到后端不可用时显示）
+        function showDemoBanner() {
+            if (document.getElementById('demo-banner')) return;
+            const banner = document.createElement('div');
+            banner.id = 'demo-banner';
+            banner.className = 'fixed top-0 left-0 right-0 z-50 bg-yellow-500/90 text-black text-center py-2 px-4 text-sm font-medium';
+            banner.innerHTML = '<i class="fas fa-info-circle mr-2"></i>当前为演示模式（静态部署），数据为模拟数据。完整功能需部署后端服务。<button onclick="this.parentElement.remove()" class="ml-4 font-bold hover:text-white">×</button>';
+            document.body.style.paddingTop = '36px';
+            document.body.appendChild(banner);
+        }
+        
+        // 模拟数据 - 高风险榜单
+        function getMockHotRisks() {
+            return [
+                {code:'600001',name:'示例地产A',industry:'房地产',market:'上交所',market_cap:'120亿',probability_30d:72,probability_60d:85,probability_90d:91,risk_level:'高风险',main_risk_types:['债务违约','商誉减值','财务异常']},
+                {code:'002001',name:'示例医药B',industry:'医药生物',market:'深交所',market_cap:'85亿',probability_30d:65,probability_60d:78,probability_90d:85,risk_level:'高风险',main_risk_types:['商誉减值','业绩变脸','关联交易']},
+                {code:'300001',name:'示例科技C',industry:'电子信息',market:'深交所',market_cap:'45亿',probability_30d:58,probability_60d:72,probability_90d:80,risk_level:'高风险',main_risk_types:['财务造假','信息披露违规','股权质押']},
+                {code:'601001',name:'示例能源D',industry:'煤炭',market:'上交所',market_cap:'200亿',probability_30d:42,probability_60d:58,probability_90d:68,risk_level:'中风险',main_risk_types:['经营波动','环保违规']},
+                {code:'000001',name:'示例平安',industry:'保险',market:'深交所',market_cap:'8500亿',probability_30d:15,probability_60d:22,probability_90d:28,risk_level:'低风险',main_risk_types:['市场风险']},
+                {code:'600519',name:'贵州茅台',industry:'白酒',market:'上交所',market_cap:'21000亿',probability_30d:8,probability_60d:12,probability_90d:15,risk_level:'低风险',main_risk_types:[]},
+                {code:'002594',name:'比亚迪',industry:'新能源汽车',market:'深交所',market_cap:'5500亿',probability_30d:12,probability_60d:18,probability_90d:25,risk_level:'低风险',main_risk_types:[]},
+                {code:'835185',name:'贝特瑞',industry:'锂电池材料',market:'北交所',market_cap:'280亿',probability_30d:35,probability_60d:48,probability_90d:55,risk_level:'中风险',main_risk_types:['业绩波动','关联交易']},
+                {code:'601318',name:'中国平安',industry:'保险',market:'上交所',market_cap:'8500亿',probability_30d:10,probability_60d:15,probability_90d:20,risk_level:'低风险',main_risk_types:[]},
+                {code:'300750',name:'宁德时代',industry:'锂电池',market:'深交所',market_cap:'7200亿',probability_30d:18,probability_60d:25,probability_90d:32,risk_level:'低风险',main_risk_types:[]},
+                {code:'000002',name:'示例万科',industry:'房地产',market:'深交所',market_cap:'1800亿',probability_30d:45,probability_60d:58,probability_90d:65,risk_level:'中风险',main_risk_types:['债务风险','经营波动']},
+                {code:'600036',name:'示例招行',industry:'银行',market:'上交所',market_cap:'9000亿',probability_30d:8,probability_60d:12,probability_90d:16,risk_level:'低风险',main_risk_types:[]},
+                {code:'601899',name:'示例紫金',industry:'有色金属',market:'上交所',market_cap:'3500亿',probability_30d:22,probability_60d:30,probability_90d:38,risk_level:'低风险',main_risk_types:['环保合规']},
+                {code:'002475',name:'示例立讯',industry:'电子',market:'深交所',market_cap:'2200亿',probability_30d:20,probability_60d:28,probability_90d:35,risk_level:'低风险',main_risk_types:[]},
+            ];
+        }
+        
+        // 模拟数据 - 案例库
+        function getMockCases() {
+            return [
+                {case_id:'CASE001',company:'某ST公司',date:'2023-08-15',reason:'连续三年财务造假，虚增营收28亿元',risk_type:'财务异常',key_points:['营收增长率异常高于行业均值300%','应收账款周转天数从45天激增至180天','经营现金流连续三年为负但净利润为正','关联方交易占比超40%未披露'],outcome:'被实施退市风险警示，证监会立案调查'},
+                {case_id:'CASE002',company:'某地产公司',date:'2023-11-20',reason:'大额商誉减值计提不充分，跨期调节利润',risk_type:'商誉减值',key_points:['商誉余额120亿占净资产65%','并购标的连续两年业绩承诺未达标','减值测试折现率选用不合理','未充分披露商誉减值风险'],outcome:'年报问询函，要求重新进行减值测试'},
+                {case_id:'CASE003',company:'某医药公司',date:'2024-01-08',reason:'研发支出资本化比例过高，涉嫌调节利润',risk_type:'信息披露违规',key_points:['研发资本化率从30%升至75%','研发项目阶段划分依据不充分','核心在研产品临床进展与披露不符'],outcome:'年报问询函，保荐机构出具核查意见'},
+                {case_id:'CASE004',company:'某新能源公司',date:'2024-02-14',reason:'关联交易非关联化，利益输送嫌疑',risk_type:'关联交易',key_points:['供应商成立时间短即成为第一大供应商','供应商法人与公司高管存在关联关系','交易价格偏离市场价格20%以上'],outcome:'问询函要求披露交易对方详细信息'},
+                {case_id:'CASE005',company:'某科技公司',date:'2024-03-01',reason:'控股股东高比例质押叠加减持，控制权稳定性风险',risk_type:'股权质押',key_points:['控股股东质押比例达92%','一致行动人持续减持','质押股份已触及平仓线两次'],outcome:'问询函要求说明控制权稳定措施'},
+                {case_id:'CASE006',company:'某制造公司',date:'2024-03-20',reason:'业绩预告变脸，大额存货跌价准备计提异常',risk_type:'业绩变脸',key_points:['年报业绩从预盈5亿变为亏损12亿','存货跌价准备集中在第四季度计提','存货周转率骤降，库龄结构恶化'],outcome:'年报问询函，审计机构被约谈'},
+                {case_id:'CASE007',company:'某环保公司',date:'2024-04-10',reason:'重大诉讼未及时披露，涉嫌信息披露违规',risk_type:'信息披露违规',key_points:['涉及金额3.5亿重大诉讼未公告','诉讼发生距披露时间间隔6个月','对当期利润影响超过净利润50%'],outcome:'警示函，责令改正，立案调查'},
+                {case_id:'CASE008',company:'某教育公司',date:'2024-05-05',reason:'收入确认政策激进，提前确认收入',risk_type:'财务异常',key_points:['一次性确认多年课程收入','退款负债计提严重不足','续课率数据与实际情况严重不符'],outcome:'问询函，要求会计师专项核查'},
+            ];
+        }
+        
+        // 模拟AI聊天回复
+        function getMockChatReply(question) {
+            const q = question.toLowerCase();
+            if (q.includes('高风险') || q.includes('高危')) {
+                return '当前模拟数据中，高风险公司主要集中在以下领域：\n\n1. 房地产行业：债务压力大，资产负债率普遍超80%\n2. 医药生物行业：商誉占比高，并购标的业绩不及预期\n3. 部分中小市值公司：股权质押比例高，存在控制权风险\n\n建议重点关注：60天问询概率超过70%的公司，结合近期公告和财务数据综合判断。\n\n（演示模式回复，部署后端后将提供AI智能分析）';
+            }
+            if (q.includes('商誉') || q.includes('减值')) {
+                return '商誉减值是监管问询的高频领域。主要风险信号包括：\n\n• 商誉占净资产比例超过30%\n• 并购标的连续两年业绩承诺未达标\n• 减值测试关键参数（折现率、增长率）与行业惯例偏差大\n• 同行业可比公司已计提大额减值但本公司未计提\n\n知识图谱关联风险路径：高商誉→业绩承诺不达标→减值计提不充分→年报问询。\n\n（演示模式回复）';
+            }
+            if (q.includes('问询') || q.includes('函')) {
+                return '监管问询函主要类型及触发条件：\n\n1. 年报问询函：财务数据异常、审计意见非标、关联交易\n2. 重组问询函：估值合理性、业绩承诺、关联交易非关联化\n3. 关注函：股价异常波动、媒体质疑、重大事项未披露\n4. 监管工作函：一般性合规问题、信息披露补充\n\n本系统基于历史1000+问询案例训练，覆盖上述全部类型。\n\n（演示模式回复）';
+            }
+            return '感谢使用智鉴风控AI助手！\n\n当前为演示模式，我可以回答以下类型的问题：\n• 高风险公司识别与特征分析\n• 商誉减值风险信号\n• 监管问询函类型与触发条件\n• 财务异常指标解读\n• 知识图谱风险推理路径\n\n部署完整后端后，将支持任意问题的AI智能回答、公司数据查询、风险归因分析等高级功能。\n\n（演示模式回复）';
+        }
         
         let currentAnalysisData = null;
         let riskTypeChart, riskLevelChart, financialChart;
@@ -724,6 +814,16 @@
         
         // 加载仪表盘
         async function loadDashboard() {
+            if (DEMO_MODE) {
+                loadMockDashboard();
+                renderTopRisks(getMockHotRisks().slice(0, 5));
+                updateCharts({
+                    top_risk_types: [{type:'财务异常',count:5},{type:'商誉减值',count:4},{type:'信息披露违规',count:3},{type:'关联交易',count:3},{type:'股权质押',count:2}],
+                    high_risk_count:5, medium_risk_count:6, low_risk_count:3
+                });
+                showDemoBanner();
+                return;
+            }
             try {
                 const [statsRes, hotRes] = await Promise.all([
                     fetch(`${API_BASE}/dashboard/stats`).then(r => r.json()),
@@ -745,9 +845,15 @@
                     renderTopRisks(hotRes.data.slice(0, 5));
                 }
             } catch (e) {
-                console.error('加载仪表盘失败:', e);
-                // 使用模拟数据
+                console.error('加载仪表盘失败，切换演示模式:', e);
+                DEMO_MODE = true;
                 loadMockDashboard();
+                renderTopRisks(getMockHotRisks().slice(0, 5));
+                updateCharts({
+                    top_risk_types: [{type:'财务异常',count:5},{type:'商誉减值',count:4},{type:'信息披露违规',count:3},{type:'关联交易',count:3},{type:'股权质押',count:2}],
+                    high_risk_count:5, medium_risk_count:6, low_risk_count:3
+                });
+                showDemoBanner();
             }
         }
         
@@ -814,27 +920,27 @@
         function renderTopRisks(risks) {
             const container = document.getElementById('top-risks');
             container.innerHTML = risks.map((r, i) => `
-                <div class="flex items-center gap-4 p-4 rounded-xl bg-slate-800/30 hover:bg-slate-800/50 transition-colors cursor-pointer" onclick="quickAnalyze('${r.code}')">
+                <div class="flex items-center gap-4 p-4 rounded-xl bg-slate-800/30 hover:bg-slate-800/50 transition-colors cursor-pointer" onclick="quickAnalyze('${escapeHtml(r.code)}')">
                     <div class="w-8 h-8 rounded-lg ${i < 3 ? 'bg-red-500/20 text-red-400' : 'bg-slate-700 text-gray-400'} flex items-center justify-center font-bold">
                         ${i + 1}
                     </div>
                     <div class="flex-1">
                         <div class="flex items-center gap-2">
-                            <span class="font-semibold">${r.name}</span>
-                            <span class="text-gray-500 text-sm">${r.code}</span>
-                            <span class="text-xs px-2 py-0.5 rounded bg-slate-700 text-gray-400">${r.industry}</span>
+                            <span class="font-semibold">${escapeHtml(r.name)}</span>
+                            <span class="text-gray-500 text-sm">${escapeHtml(r.code)}</span>
+                            <span class="text-xs px-2 py-0.5 rounded bg-slate-700 text-gray-400">${escapeHtml(r.industry)}</span>
                         </div>
                         <div class="flex items-center gap-2 mt-1">
-                            ${r.main_risk_types.slice(0, 3).map(t => `<span class="text-xs text-red-400">${t}</span>`).join(' · ')}
+                            ${r.main_risk_types.slice(0, 3).map(t => `<span class="text-xs text-red-400">${escapeHtml(t)}</span>`).join(' · ')}
                         </div>
                     </div>
                     <div class="w-48">
                         <div class="flex justify-between text-sm mb-1">
                             <span class="text-gray-400">60天概率</span>
-                            <span class="${r.risk_level === '高风险' ? 'text-red-400' : r.risk_level === '中风险' ? 'text-yellow-400' : 'text-green-400'} font-semibold">${r.probability_60d}%</span>
+                            <span class="${r.risk_level === '高风险' ? 'text-red-400' : r.risk_level === '中风险' ? 'text-yellow-400' : 'text-green-400'} font-semibold">${escapeHtml(r.probability_60d)}%</span>
                         </div>
                         <div class="h-2 bg-slate-700 rounded-full overflow-hidden">
-                            <div class="risk-bar h-full rounded-full ${r.risk_level === '高风险' ? 'risk-high' : r.risk_level === '中风险' ? 'risk-medium' : 'risk-low'}" style="width: ${r.probability_60d}%"></div>
+                            <div class="risk-bar h-full rounded-full ${r.risk_level === '高风险' ? 'risk-high' : r.risk_level === '中风险' ? 'risk-medium' : 'risk-low'}" style="width: ${escapeHtml(r.probability_60d)}%"></div>
                         </div>
                     </div>
                 </div>
@@ -881,6 +987,13 @@
             document.getElementById('analyzing-status').innerHTML = '<i class="fas fa-spinner fa-spin"></i> 分析中...';
             document.getElementById('analyzing-status').classList.add('analyzing');
             
+            if (DEMO_MODE) {
+                currentAnalysisData = getMockAnalysisData(code);
+                await simulateAgentExecution(currentAnalysisData);
+                renderAnalysisResult(currentAnalysisData);
+                return;
+            }
+            
             try {
                 const response = await fetch(`${API_BASE}/analyze`, {
                     method: 'POST',
@@ -895,11 +1008,12 @@
                     renderAnalysisResult(result.data);
                 }
             } catch (e) {
-                console.error('分析失败:', e);
-                // 模拟数据用于演示
+                console.error('分析失败，切换演示模式:', e);
+                DEMO_MODE = true;
                 currentAnalysisData = getMockAnalysisData(code);
                 await simulateAgentExecution(currentAnalysisData);
                 renderAnalysisResult(currentAnalysisData);
+                showDemoBanner();
             }
         }
         
@@ -984,10 +1098,10 @@
                     </div>
                     <div class="flex-1">
                         <div class="flex items-center gap-2 mb-1">
-                            <span class="font-medium text-${color}-400 text-sm">${log.agent}</span>
-                            <span class="text-xs text-gray-500">${log.action}</span>
+                            <span class="font-medium text-${color}-400 text-sm">${escapeHtml(log.agent)}</span>
+                            <span class="text-xs text-gray-500">${escapeHtml(log.action)}</span>
                         </div>
-                        <p class="text-sm text-gray-400">${log.detail}</p>
+                        <p class="text-sm text-gray-400">${escapeHtml(log.detail)}</p>
                     </div>
                     <div class="text-green-400"><i class="fas fa-check-circle"></i></div>
                 `;
@@ -1030,24 +1144,24 @@
             
             // 风险类型
             document.getElementById('risk-types').innerHTML = ai.main_risk_types.map(t => 
-                `<span class="px-3 py-1 rounded-lg bg-red-500/20 text-red-400 text-sm border border-red-500/30">${t}</span>`
+                `<span class="px-3 py-1 rounded-lg bg-red-500/20 text-red-400 text-sm border border-red-500/30">${escapeHtml(t)}</span>`
             ).join('');
             
             // 风险因素
             document.getElementById('risk-factors-list').innerHTML = data.risk_factors.map(f => `
                 <div class="flex items-start gap-4 p-4 rounded-xl bg-slate-800/30">
                     <div class="w-12 h-12 rounded-xl bg-red-500/20 flex items-center justify-center flex-shrink-0">
-                        <span class="text-red-400 font-bold">${f.weight}</span>
+                        <span class="text-red-400 font-bold">${escapeHtml(f.weight)}</span>
                     </div>
                     <div class="flex-1">
-                        <h4 class="font-semibold text-white mb-1">${f.factor}</h4>
-                        <p class="text-gray-400 text-sm">${f.detail}</p>
+                        <h4 class="font-semibold text-white mb-1">${escapeHtml(f.factor)}</h4>
+                        <p class="text-gray-400 text-sm">${escapeHtml(f.detail)}</p>
                     </div>
                     <div class="w-24">
                         <div class="h-2 bg-slate-700 rounded-full overflow-hidden">
-                            <div class="h-full bg-red-500 rounded-full" style="width: ${f.weight}%"></div>
+                            <div class="h-full bg-red-500 rounded-full" style="width: ${escapeHtml(f.weight)}%"></div>
                         </div>
-                        <div class="text-xs text-gray-500 mt-1 text-right">权重 ${f.weight}%</div>
+                        <div class="text-xs text-gray-500 mt-1 text-right">权重 ${escapeHtml(f.weight)}%</div>
                     </div>
                 </div>
             `).join('');
@@ -1059,7 +1173,7 @@
                         <span class="text-cyan-400 text-sm font-bold">${i + 1}</span>
                     </div>
                     <div class="flex-1">
-                        <p class="text-gray-200"><i class="fas fa-quote-left text-cyan-400/50 mr-2"></i>${e}</p>
+                        <p class="text-gray-200"><i class="fas fa-quote-left text-cyan-400/50 mr-2"></i>${escapeHtml(e)}</p>
                     </div>
                 </div>
             `).join('');
@@ -1073,17 +1187,17 @@
                     <div class="flex items-start justify-between mb-3">
                         <div>
                             <div class="flex items-center gap-2">
-                                <span class="font-semibold">${c.company}</span>
-                                <span class="text-xs px-2 py-0.5 rounded bg-yellow-500/20 text-yellow-400">${c.risk_type}</span>
+                                <span class="font-semibold">${escapeHtml(c.company)}</span>
+                                <span class="text-xs px-2 py-0.5 rounded bg-yellow-500/20 text-yellow-400">${escapeHtml(c.risk_type)}</span>
                             </div>
-                            <div class="text-sm text-gray-500 mt-1">${c.date} · ${c.case_id}</div>
+                            <div class="text-sm text-gray-500 mt-1">${escapeHtml(c.date)} · ${escapeHtml(c.case_id)}</div>
                         </div>
-                        <span class="text-xs px-2 py-1 rounded bg-red-500/20 text-red-400">${c.outcome}</span>
+                        <span class="text-xs px-2 py-1 rounded bg-red-500/20 text-red-400">${escapeHtml(c.outcome)}</span>
                     </div>
-                    <p class="text-gray-300 mb-3">${c.reason}</p>
+                    <p class="text-gray-300 mb-3">${escapeHtml(c.reason)}</p>
                     <div class="space-y-1">
                         <div class="text-sm text-gray-400">关键风险点：</div>
-                        ${c.key_points.map(kp => `<div class="text-sm text-gray-500 pl-4">• ${kp}</div>`).join('')}
+                        ${c.key_points.map(kp => `<div class="text-sm text-gray-500 pl-4">• ${escapeHtml(kp)}</div>`).join('')}
                     </div>
                 </div>
             `).join('');
@@ -1092,12 +1206,12 @@
             document.getElementById('announcements-list').innerHTML = data.announcements.map(a => `
                 <div class="flex items-center gap-4 p-4 rounded-xl bg-slate-800/30 hover:bg-slate-800/50 transition-colors cursor-pointer">
                     <div class="text-center">
-                        <div class="text-xs text-gray-500">${a.date.split('-')[1]}月</div>
-                        <div class="text-xl font-bold text-cyan-400">${a.date.split('-')[2]}</div>
+                        <div class="text-xs text-gray-500">${escapeHtml(a.date.split('-')[1])}月</div>
+                        <div class="text-xl font-bold text-cyan-400">${escapeHtml(a.date.split('-')[2])}</div>
                     </div>
                     <div class="flex-1">
-                        <h4 class="text-gray-200">${a.title}</h4>
-                        <span class="text-xs px-2 py-0.5 rounded bg-slate-700 text-gray-400 mt-1 inline-block">${a.type}</span>
+                        <h4 class="text-gray-200">${escapeHtml(a.title)}</h4>
+                        <span class="text-xs px-2 py-0.5 rounded bg-slate-700 text-gray-400 mt-1 inline-block">${escapeHtml(a.type)}</span>
                     </div>
                     <i class="fas fa-chevron-right text-gray-500"></i>
                 </div>
@@ -1125,8 +1239,8 @@
                 const isRisk = m.higher ? m.value > m.threshold : m.value < m.threshold;
                 return `
                     <div class="flex items-center justify-between p-3 rounded-lg bg-slate-800/30">
-                        <span class="text-gray-400">${m.name}</span>
-                        <span class="${isRisk ? 'text-red-400' : 'text-green-400'} font-semibold">${m.value.toFixed(1)}${m.unit}</span>
+                        <span class="text-gray-400">${escapeHtml(m.name)}</span>
+                        <span class="${isRisk ? 'text-red-400' : 'text-green-400'} font-semibold">${escapeHtml(m.value.toFixed(1))}${escapeHtml(m.unit)}</span>
                     </div>
                 `;
             }).join('');
@@ -1188,6 +1302,10 @@
         
         // 加载榜单
         async function loadRanking() {
+            if (DEMO_MODE) {
+                renderRanking(getMockHotRisks());
+                return;
+            }
             try {
                 const res = await fetch(`${API_BASE}/risk/hot`).then(r => r.json());
                 if (res.success) {
@@ -1195,6 +1313,9 @@
                 }
             } catch (e) {
                 console.error(e);
+                DEMO_MODE = true;
+                renderRanking(getMockHotRisks());
+                showDemoBanner();
             }
         }
         
@@ -1204,19 +1325,19 @@
                     <td class="px-6 py-4">
                         <span class="w-8 h-8 rounded-lg ${i < 3 ? 'bg-red-500/20 text-red-400' : 'bg-slate-700 text-gray-400'} inline-flex items-center justify-center font-bold">${i+1}</span>
                     </td>
-                    <td class="px-6 py-4 font-mono text-gray-300">${r.code}</td>
-                    <td class="px-6 py-4 font-semibold">${r.name}</td>
-                    <td class="px-6 py-4 text-gray-400">${r.industry}</td>
-                    <td class="px-6 py-4 text-gray-400">${r.market}</td>
-                    <td class="px-6 py-4 text-gray-400">${r.market_cap}</td>
-                    <td class="px-6 py-4 ${r.probability_30d >= 70 ? 'text-red-400' : r.probability_30d >= 40 ? 'text-yellow-400' : 'text-green-400'}">${r.probability_30d}%</td>
-                    <td class="px-6 py-4 font-semibold ${r.probability_60d >= 70 ? 'text-red-400' : r.probability_60d >= 40 ? 'text-yellow-400' : 'text-green-400'}">${r.probability_60d}%</td>
-                    <td class="px-6 py-4 ${r.probability_90d >= 70 ? 'text-red-400' : r.probability_90d >= 40 ? 'text-yellow-400' : 'text-green-400'}">${r.probability_90d}%</td>
+                    <td class="px-6 py-4 font-mono text-gray-300">${escapeHtml(r.code)}</td>
+                    <td class="px-6 py-4 font-semibold">${escapeHtml(r.name)}</td>
+                    <td class="px-6 py-4 text-gray-400">${escapeHtml(r.industry)}</td>
+                    <td class="px-6 py-4 text-gray-400">${escapeHtml(r.market)}</td>
+                    <td class="px-6 py-4 text-gray-400">${escapeHtml(r.market_cap)}</td>
+                    <td class="px-6 py-4 ${r.probability_30d >= 70 ? 'text-red-400' : r.probability_30d >= 40 ? 'text-yellow-400' : 'text-green-400'}">${escapeHtml(r.probability_30d)}%</td>
+                    <td class="px-6 py-4 font-semibold ${r.probability_60d >= 70 ? 'text-red-400' : r.probability_60d >= 40 ? 'text-yellow-400' : 'text-green-400'}">${escapeHtml(r.probability_60d)}%</td>
+                    <td class="px-6 py-4 ${r.probability_90d >= 70 ? 'text-red-400' : r.probability_90d >= 40 ? 'text-yellow-400' : 'text-green-400'}">${escapeHtml(r.probability_90d)}%</td>
                     <td class="px-6 py-4">
-                        <span class="px-3 py-1 rounded-full text-white text-sm ${r.risk_level === '高风险' ? 'risk-high' : r.risk_level === '中风险' ? 'risk-medium' : 'risk-low'}">${r.risk_level}</span>
+                        <span class="px-3 py-1 rounded-full text-white text-sm ${r.risk_level === '高风险' ? 'risk-high' : r.risk_level === '中风险' ? 'risk-medium' : 'risk-low'}">${escapeHtml(r.risk_level)}</span>
                     </td>
                     <td class="px-6 py-4">
-                        <button onclick="quickAnalyze('${r.code}')" class="text-cyan-400 hover:text-cyan-300 text-sm">
+                        <button onclick="quickAnalyze('${escapeHtml(r.code)}')" class="text-cyan-400 hover:text-cyan-300 text-sm">
                             <i class="fas fa-analytics mr-1"></i>详情
                         </button>
                     </td>
@@ -1226,6 +1347,10 @@
         
         // 加载案例库
         async function loadCasesLibrary() {
+            if (DEMO_MODE) {
+                renderCasesLibrary(getMockCases());
+                return;
+            }
             try {
                 const res = await fetch(`${API_BASE}/cases/history`).then(r => r.json());
                 if (res.success) {
@@ -1233,6 +1358,9 @@
                 }
             } catch (e) {
                 console.error(e);
+                DEMO_MODE = true;
+                renderCasesLibrary(getMockCases());
+                showDemoBanner();
             }
         }
         
@@ -1241,17 +1369,17 @@
                 <div class="p-5 rounded-xl glass-card border border-cyan-500/10 hover:border-cyan-500/30 transition-colors">
                     <div class="flex items-start justify-between mb-3">
                         <div>
-                            <span class="text-xs px-2 py-0.5 rounded bg-yellow-500/20 text-yellow-400">${c.risk_type}</span>
-                            <h4 class="font-semibold mt-2">${c.company}</h4>
+                            <span class="text-xs px-2 py-0.5 rounded bg-yellow-500/20 text-yellow-400">${escapeHtml(c.risk_type)}</span>
+                            <h4 class="font-semibold mt-2">${escapeHtml(c.company)}</h4>
                         </div>
-                        <span class="text-sm text-gray-500">${c.date}</span>
+                        <span class="text-sm text-gray-500">${escapeHtml(c.date)}</span>
                     </div>
-                    <p class="text-gray-300 mb-3">${c.reason}</p>
+                    <p class="text-gray-300 mb-3">${escapeHtml(c.reason)}</p>
                     <div class="space-y-1 mb-3">
-                        ${c.key_points.map(kp => `<div class="text-sm text-gray-500">• ${kp}</div>`).join('')}
+                        ${c.key_points.map(kp => `<div class="text-sm text-gray-500">• ${escapeHtml(kp)}</div>`).join('')}
                     </div>
                     <div class="pt-3 border-t border-cyan-500/10">
-                        <span class="text-sm text-red-400"><i class="fas fa-gavel mr-1"></i>${c.outcome}</span>
+                        <span class="text-sm text-red-400"><i class="fas fa-gavel mr-1"></i>${escapeHtml(c.outcome)}</span>
                     </div>
                 </div>
             `).join('');
@@ -1280,7 +1408,7 @@
             container.innerHTML += `
                 <div class="flex gap-3 justify-end">
                     <div class="bg-gradient-to-r from-cyan-500/20 to-blue-600/20 rounded-2xl rounded-tr-sm p-4 max-w-[80%]">
-                        <p class="text-gray-200">${msg}</p>
+                        <p class="text-gray-200">${escapeHtml(msg)}</p>
                     </div>
                     <div class="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center flex-shrink-0">
                         <i class="fas fa-user"></i>
@@ -1308,28 +1436,46 @@
             container.scrollTop = container.scrollHeight;
             
             try {
-                const res = await fetch(`${API_BASE}/chat`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ question: msg })
-                });
-                const data = await res.json();
-                
-                document.getElementById(thinkingId).remove();
-                
-                if (data.success) {
+                if (DEMO_MODE) {
+                    // 演示模式：使用模拟回复
+                    await new Promise(r => setTimeout(r, 800));
+                    document.getElementById(thinkingId).remove();
                     container.innerHTML += `
                         <div class="flex gap-3">
                             <div class="w-10 h-10 rounded-full bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center flex-shrink-0">
                                 <i class="fas fa-robot"></i>
                             </div>
                             <div class="glass-card rounded-2xl rounded-tl-sm p-4 max-w-[80%]">
-                                <p class="text-gray-200 whitespace-pre-line">${data.data.answer}</p>
+                                <p class="text-gray-200 whitespace-pre-line">${escapeHtml(getMockChatReply(msg))}</p>
                             </div>
                         </div>
                     `;
+                } else {
+                    const res = await fetch(`${API_BASE}/chat`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ question: msg })
+                    });
+                    const data = await res.json();
+                    
+                    document.getElementById(thinkingId).remove();
+                    
+                    if (data.success) {
+                        container.innerHTML += `
+                            <div class="flex gap-3">
+                                <div class="w-10 h-10 rounded-full bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center flex-shrink-0">
+                                    <i class="fas fa-robot"></i>
+                                </div>
+                                <div class="glass-card rounded-2xl rounded-tl-sm p-4 max-w-[80%]">
+                                    <p class="text-gray-200 whitespace-pre-line">${sanitizeHtml(data.data.answer)}</p>
+                                </div>
+                            </div>
+                        `;
+                    }
                 }
             } catch (e) {
+                console.error('聊天失败，切换演示模式:', e);
+                DEMO_MODE = true;
                 document.getElementById(thinkingId).remove();
                 container.innerHTML += `
                     <div class="flex gap-3">
@@ -1337,10 +1483,11 @@
                             <i class="fas fa-robot"></i>
                         </div>
                         <div class="glass-card rounded-2xl rounded-tl-sm p-4 max-w-[80%]">
-                            <p class="text-gray-200">抱歉，AI服务暂时不可用。请稍后重试，或检查网络连接。</p>
+                            <p class="text-gray-200 whitespace-pre-line">${escapeHtml(getMockChatReply(msg))}</p>
                         </div>
                     </div>
                 `;
+                showDemoBanner();
             }
             
             container.scrollTop = container.scrollHeight;
@@ -1364,42 +1511,42 @@
                 <div class="space-y-6">
                     <div class="text-center pb-6 border-b border-cyan-500/20">
                         <h2 class="text-2xl font-bold bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent">上市公司监管问询风险预警报告</h2>
-                        <p class="text-gray-400 mt-2">报告生成时间：${now}</p>
+                        <p class="text-gray-400 mt-2">报告生成时间：${escapeHtml(now)}</p>
                         <p class="text-xs text-gray-500 mt-1">Powered by 智谱GLM-4.5-Flash · Agentic AI多智能体协同分析</p>
                     </div>
                     
                     <div class="p-4 rounded-xl ${ai.risk_level === '高风险' ? 'bg-red-500/10 border border-red-500/30' : ai.risk_level === '中风险' ? 'bg-yellow-500/10 border border-yellow-500/30' : 'bg-green-500/10 border border-green-500/30'}">
                         <div class="flex items-center justify-between">
                             <div>
-                                <h3 class="text-xl font-bold">${info.name} (${info.code})</h3>
-                                <p class="text-gray-400">${info.industry} · ${info.market} · 市值${info.market_cap}亿元</p>
+                                <h3 class="text-xl font-bold">${escapeHtml(info.name)} (${escapeHtml(info.code)})</h3>
+                                <p class="text-gray-400">${escapeHtml(info.industry)} · ${escapeHtml(info.market)} · 市值${escapeHtml(info.market_cap)}亿元</p>
                             </div>
                             <div class="text-right">
-                                <div class="text-3xl font-bold ${ai.risk_level === '高风险' ? 'text-red-400' : ai.risk_level === '中风险' ? 'text-yellow-400' : 'text-green-400'}">${ai.inquiry_probability_60d}%</div>
+                                <div class="text-3xl font-bold ${ai.risk_level === '高风险' ? 'text-red-400' : ai.risk_level === '中风险' ? 'text-yellow-400' : 'text-green-400'}">${escapeHtml(ai.inquiry_probability_60d)}%</div>
                                 <div class="text-sm text-gray-400">60天问询概率</div>
-                                <span class="inline-block mt-2 px-3 py-1 rounded-full text-white text-sm ${ai.risk_level === '高风险' ? 'risk-high' : ai.risk_level === '中风险' ? 'risk-medium' : 'risk-low'}">${ai.risk_level}</span>
+                                <span class="inline-block mt-2 px-3 py-1 rounded-full text-white text-sm ${ai.risk_level === '高风险' ? 'risk-high' : ai.risk_level === '中风险' ? 'risk-medium' : 'risk-low'}">${escapeHtml(ai.risk_level)}</span>
                             </div>
                         </div>
                     </div>
                     
                     <div>
                         <h4 class="font-semibold text-lg mb-3 flex items-center gap-2"><i class="fas fa-file-alt text-cyan-400"></i>一、风险评估摘要</h4>
-                        <p class="text-gray-300 leading-relaxed">${ai.risk_summary}</p>
+                        <p class="text-gray-300 leading-relaxed">${escapeHtml(ai.risk_summary)}</p>
                     </div>
                     
                     <div>
                         <h4 class="font-semibold text-lg mb-3 flex items-center gap-2"><i class="fas fa-calendar-days text-cyan-400"></i>二、多时间窗口预测</h4>
                         <div class="grid grid-cols-3 gap-4">
                             <div class="p-4 rounded-xl bg-slate-800/50 text-center">
-                                <div class="text-2xl font-bold text-yellow-400">${ai.inquiry_probability_30d}%</div>
+                                <div class="text-2xl font-bold text-yellow-400">${escapeHtml(ai.inquiry_probability_30d)}%</div>
                                 <div class="text-gray-400 text-sm">30天内</div>
                             </div>
                             <div class="p-4 rounded-xl bg-slate-800/50 text-center border-2 border-cyan-500/30">
-                                <div class="text-2xl font-bold text-orange-400">${ai.inquiry_probability_60d}%</div>
+                                <div class="text-2xl font-bold text-orange-400">${escapeHtml(ai.inquiry_probability_60d)}%</div>
                                 <div class="text-gray-400 text-sm">60天内（重点）</div>
                             </div>
                             <div class="p-4 rounded-xl bg-slate-800/50 text-center">
-                                <div class="text-2xl font-bold text-red-400">${ai.inquiry_probability_90d}%</div>
+                                <div class="text-2xl font-bold text-red-400">${escapeHtml(ai.inquiry_probability_90d)}%</div>
                                 <div class="text-gray-400 text-sm">90天内</div>
                             </div>
                         </div>
@@ -1410,10 +1557,10 @@
                         <div class="space-y-2">
                             ${data.risk_factors.map(f => `
                                 <div class="flex items-center gap-3 p-3 rounded-lg bg-slate-800/30">
-                                    <span class="w-8 h-8 rounded bg-red-500/20 text-red-400 flex items-center justify-center font-bold text-sm">${f.weight}</span>
+                                    <span class="w-8 h-8 rounded bg-red-500/20 text-red-400 flex items-center justify-center font-bold text-sm">${escapeHtml(f.weight)}</span>
                                     <div>
-                                        <div class="font-medium">${f.factor}</div>
-                                        <div class="text-sm text-gray-400">${f.detail}</div>
+                                        <div class="font-medium">${escapeHtml(f.factor)}</div>
+                                        <div class="text-sm text-gray-400">${escapeHtml(f.detail)}</div>
                                     </div>
                                 </div>
                             `).join('')}
@@ -1425,7 +1572,7 @@
                         <div class="space-y-2">
                             ${ai.key_evidence.map((e, i) => `
                                 <div class="p-3 rounded-lg bg-slate-800/30 border-l-2 border-cyan-500">
-                                    <span class="text-cyan-400 font-bold mr-2">证据${i+1}:</span>${e}
+                                    <span class="text-cyan-400 font-bold mr-2">证据${i+1}:</span>${escapeHtml(e)}
                                 </div>
                             `).join('')}
                         </div>
@@ -1437,11 +1584,11 @@
                             ${data.matched_cases.map(c => `
                                 <div class="p-4 rounded-lg bg-slate-800/30">
                                     <div class="flex items-center justify-between mb-2">
-                                        <span class="font-medium">${c.company} - ${c.risk_type}</span>
-                                        <span class="text-sm text-gray-500">${c.date}</span>
+                                        <span class="font-medium">${escapeHtml(c.company)} - ${escapeHtml(c.risk_type)}</span>
+                                        <span class="text-sm text-gray-500">${escapeHtml(c.date)}</span>
                                     </div>
-                                    <p class="text-gray-400 text-sm">${c.reason}</p>
-                                    <p class="text-red-400 text-sm mt-2">处理结果：${c.outcome}</p>
+                                    <p class="text-gray-400 text-sm">${escapeHtml(c.reason)}</p>
+                                    <p class="text-red-400 text-sm mt-2">处理结果：${escapeHtml(c.outcome)}</p>
                                 </div>
                             `).join('')}
                         </div>
@@ -1450,7 +1597,7 @@
                     <div>
                         <h4 class="font-semibold text-lg mb-3 flex items-center gap-2"><i class="fas fa-robot text-cyan-400"></i>六、Agent推理链路</h4>
                         <div class="p-4 rounded-lg bg-slate-800/30 font-mono text-xs space-y-1">
-                            ${data.reasoning_logs.slice(0, 6).map(l => `<div class="text-gray-400">[${l.agent}] ${l.action}: ${l.detail}</div>`).join('')}
+                            ${data.reasoning_logs.slice(0, 6).map(l => `<div class="text-gray-400">[${escapeHtml(l.agent)}] ${escapeHtml(l.action)}: ${escapeHtml(l.detail)}</div>`).join('')}
                         </div>
                     </div>
                     
@@ -1504,9 +1651,9 @@
             
             if (matches.length > 0) {
                 suggestions.innerHTML = matches.map(m => `
-                    <div class="px-4 py-3 hover:bg-cyan-500/10 cursor-pointer flex items-center gap-3" onclick="selectCompany('${m.code}','${m.name}')">
-                        <span class="font-mono text-cyan-400">${m.code}</span>
-                        <span class="text-gray-300">${m.name}</span>
+                    <div class="px-4 py-3 hover:bg-cyan-500/10 cursor-pointer flex items-center gap-3" onclick="selectCompany('${escapeHtml(m.code)}','${escapeHtml(m.name)}')">
+                        <span class="font-mono text-cyan-400">${escapeHtml(m.code)}</span>
+                        <span class="text-gray-300">${escapeHtml(m.name)}</span>
                     </div>
                 `).join('');
                 suggestions.classList.remove('hidden');

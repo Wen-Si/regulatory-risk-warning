@@ -1,36 +1,97 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-智鉴风控 - 基于Agentic AI + 深度学习 + 强化学习的上市公司监管问询预警系统
+智鉴风控 v3.0 - 基于Agentic AI + Harness Engineering + 知识图谱 + DL + RL的监管问询预警系统
 主应用入口 - Flask托管前端+API
 
-v2.0 升级：引入前沿深度学习与强化学习算法
+v3.0 全面升级：
+- Harness Engineering安全层：输入护栏（注入检测/PII脱敏）、输出护栏（合规校验）、审计日志、工具防火墙
+- 监管金融知识图谱：实体关系建模、Graph RAG、风险传播推理、证据链构建、幻觉抑制
 - 深度学习：DeepFM（特征交叉）、Temporal Transformer（时序注意力）、GAT（图注意力网络）、RiskTextEncoder（文本编码）
 - 强化学习：PPO（自适应阈值优化）、Thompson Sampling（集成权重学习）
-- 混合架构：DL+RL+规则引擎+LLM可解释性
+- 混合架构：Safety+KG+DL+RL+规则引擎+LLM可解释性
 """
 
 import os
 import json
 import random
+import secrets
 import requests
 import sys
+import time
 import numpy as np
 from datetime import datetime
+from collections import defaultdict
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 
-# 导入混合预测引擎
+# 导入混合预测引擎 v3.0（默认启用安全层和知识图谱）
 sys.path.insert(0, os.path.dirname(__file__))
 from ml_engine import HybridPredictor
-predictor = HybridPredictor(use_rl=True)
+predictor = HybridPredictor(use_rl=True, use_safety=True, use_kg=True)
 
 app = Flask(__name__, static_folder='static', static_url_path='')
-CORS(app)
 
-# 智谱AI配置
-ZHIPU_API_KEY = os.environ.get('ZHIPU_API_KEY', '325d6fa364954d2e871c30ba95b553bd.KBdQdqgJgELJBhnv')
+# 安全配置：CORS限制为同源
+CORS(app, resources={r"/api/*": {"origins": ["http://localhost:5000", "http://127.0.0.1:5000"]}})
+
+# 请求大小限制（1MB）
+app.config['MAX_CONTENT_LENGTH'] = 1 * 1024 * 1024
+
+# 智谱AI配置 - 从环境变量读取，不提供默认值（防止密钥泄露）
+ZHIPU_API_KEY = os.environ.get('ZHIPU_API_KEY', '')
 ZHIPU_API_URL = 'https://open.bigmodel.cn/api/paas/v4/chat/completions'
+
+# 服务端速率限制（基于IP，不依赖客户端session_id）
+_rate_limit_store = defaultdict(list)
+RATE_LIMIT = 30  # 每分钟30次请求
+RATE_WINDOW = 60  # 秒
+
+def check_rate_limit(ip):
+    """服务端IP速率限制"""
+    now = time.time()
+    window_start = now - RATE_WINDOW
+    _rate_limit_store[ip] = [t for t in _rate_limit_store[ip] if t > window_start]
+    if len(_rate_limit_store[ip]) >= RATE_LIMIT:
+        return False
+    _rate_limit_store[ip].append(now)
+    return True
+
+def get_client_ip():
+    """获取客户端真实IP"""
+    return request.remote_addr or 'unknown'
+
+# 安全响应头中间件
+@app.after_request
+def add_security_headers(response):
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    response.headers['Content-Security-Policy'] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' cdn.jsdelivr.net cdnjs.cloudflare.com cdn.tailwindcss.com; "
+        "style-src 'self' 'unsafe-inline' cdn.jsdelivr.net cdnjs.cloudflare.com fonts.googleapis.com; "
+        "font-src 'self' fonts.gstatic.com cdnjs.cloudflare.com; "
+        "img-src 'self' data:; "
+        "connect-src 'self'; "
+        "frame-ancestors 'none'"
+    )
+    response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    return response
+
+# HTML转义工具函数（防止XSS）
+def html_escape(text):
+    """HTML实体转义"""
+    if text is None:
+        return ''
+    if not isinstance(text, str):
+        text = str(text)
+    return (text.replace('&', '&amp;')
+                .replace('<', '&lt;')
+                .replace('>', '&gt;')
+                .replace('"', '&quot;')
+                .replace("'", '&#x27;'))
 
 # 模拟上市公司数据库
 MOCK_COMPANIES = {
@@ -90,11 +151,17 @@ HISTORICAL_CASES = [
 ]
 
 
-def call_zhipu_ai(messages, temperature=0.3, max_tokens=2000):
+def call_zhipu_ai(messages, temperature=0.3, max_tokens=1500):
+    """调用智谱AI，带安全检查"""
+    if not ZHIPU_API_KEY:
+        # 未配置API Key时返回降级提示
+        return "[提示：未配置智谱AI API Key，LLM功能暂不可用。请设置ZHIPU_API_KEY环境变量。]"
     headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {ZHIPU_API_KEY}'}
+    # 限制max_tokens防止滥用
+    max_tokens = min(max_tokens, 1500)
     data = {'model': 'glm-4-flash', 'messages': messages, 'temperature': temperature, 'max_tokens': max_tokens, 'stream': False}
     try:
-        response = requests.post(ZHIPU_API_URL, headers=headers, json=data, timeout=30)
+        response = requests.post(ZHIPU_API_URL, headers=headers, json=data, timeout=15)
         response.raise_for_status()
         return response.json()['choices'][0]['message']['content']
     except Exception as e:
@@ -381,15 +448,51 @@ def hot_risks():
 
 @app.route('/api/chat', methods=['POST'])
 def chat():
+    # 服务端速率限制
+    ip = get_client_ip()
+    if not check_rate_limit(ip):
+        return jsonify({'success': False, 'message': '请求过于频繁，请稍后再试'}), 429
+    
     q = request.json.get('question', '').strip()
     if not q:
         return jsonify({'success': False, 'message': '请输入问题'}), 400
+    
+    # 输入长度限制（防DoS）
+    if len(q) > 500:
+        return jsonify({'success': False, 'message': '问题长度不能超过500字符'}), 400
+    
+    # 使用安全护栏检查用户输入
+    if predictor.safety_harness:
+        input_check = predictor.safety_harness.check_input(
+            financial_data={}, announcement_text=q,
+            company_info={'code': 'chat'}, user_role='public_user',
+            session_id=ip,
+        )
+        if input_check.blocked:
+            return jsonify({
+                'success': False,
+                'message': '输入包含不当内容，请重新输入',
+                'blocked': True
+            }), 400
+        # 使用脱敏后的文本
+        q = input_check.sanitized_input if input_check.sanitized_input else q
+    
     sys_msg = """你是一位专业的上市公司监管风控专家，精通证券法规、财务分析、深度学习风控模型和风险预警。
 本系统采用DeepFM（深度因子分解机）、Temporal Transformer（时序Transformer）、GAT（图注意力网络）、PPO（强化学习）等前沿AI算法。
-请用中文回答问题，回答专业、准确、有条理，每次回答控制在300字以内。"""
-    ans = call_zhipu_ai([{'role': 'system', 'content': sys_msg}, {'role': 'user', 'content': q}], 0.5, 1000)
+请用中文回答问题，回答专业、准确、有条理，每次回答控制在300字以内。
+注意：不得提供投资建议，不得保证盈利，所有分析仅供参考。"""
+    ans = call_zhipu_ai([{'role': 'system', 'content': sys_msg}, {'role': 'user', 'content': q}], 0.5, 800)
     default_ans = '作为AI风控助手（基于DeepFM+Transformer+GAT+PPO混合架构），我可以帮您分析上市公司的监管问询风险。核心深度学习模型包括：DeepFM捕捉财务特征交叉、Temporal Transformer建模时序依赖、GAT分析行业风险传导、PPO强化学习优化预警阈值。如需具体公司分析，请在"公司扫雷"页面输入股票代码。'
-    return jsonify({'success': True, 'data': {'answer': ans or default_ans}})
+    
+    # 对LLM输出进行基本安全过滤
+    final_ans = ans or default_ans
+    if final_ans:
+        # 移除可能的恶意HTML标签
+        import re
+        final_ans = re.sub(r'<script[^>]*>.*?</script>', '', final_ans, flags=re.DOTALL)
+        final_ans = re.sub(r'<[^>]+>', '', final_ans)
+    
+    return jsonify({'success': True, 'data': {'answer': final_ans}})
 
 
 @app.route('/api/cases/history')
@@ -437,14 +540,48 @@ def ml_model_info():
 
 @app.route('/api/ml/predict', methods=['POST'])
 def ml_predict():
-    """直接调用ML引擎预测（高级API）"""
+    """直接调用ML引擎预测（高级API）v3.0 - 含安全护栏与知识图谱"""
+    # 服务端速率限制
+    ip = get_client_ip()
+    if not check_rate_limit(ip):
+        return jsonify({'success': False, 'message': '请求过于频繁，请稍后再试'}), 429
+    
     data = request.json
     financial_data = data.get('financial_data', {})
     announcement_text = data.get('announcement_text', '')
-    company_info = data.get('company_info', {})
     
-    result = predictor.predict(financial_data, announcement_text, company_info, MOCK_COMPANIES)
+    # 输入长度限制
+    if len(announcement_text) > 50000:
+        return jsonify({'success': False, 'message': '公告文本过长'}), 400
+    
+    company_info = data.get('company_info', {})
+    # user_role由服务端控制，不信任客户端传入
+    user_role = 'public_user'
+    session_id = ip  # 使用IP作为session_id进行速率限制
+    
+    result = predictor.predict(
+        financial_data, announcement_text, company_info, MOCK_COMPANIES,
+        session_id=session_id, user_role=user_role
+    )
     return jsonify({'success': True, 'data': result})
+
+
+@app.route('/api/safety/report')
+def safety_report():
+    """获取安全层统计报告"""
+    if predictor.safety_harness:
+        report = predictor.safety_harness.get_safety_report()
+        return jsonify({'success': True, 'data': report})
+    return jsonify({'success': False, 'message': '安全层未启用'})
+
+
+@app.route('/api/kg/stats')
+def kg_stats():
+    """获取知识图谱统计"""
+    if predictor.kg:
+        stats = predictor.kg.get_stats()
+        return jsonify({'success': True, 'data': stats})
+    return jsonify({'success': False, 'message': '知识图谱未启用'})
 
 
 @app.route('/api/ml/feedback', methods=['POST'])
@@ -501,8 +638,10 @@ def stats():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     print("=" * 60)
-    print("智鉴风控 v2.0 - DL+RL混合预测引擎")
-    print("深度学习模型: DeepFM, Temporal Transformer, GAT, RiskTextEncoder")
-    print("强化学习组件: PPO(阈值优化), Thompson Sampling(集成权重)")
+    print("智鉴风控 v3.0 - Safety Harness + Knowledge Graph + DL+RL")
+    print("安全层: Harness Engineering (输入护栏/输出护栏/审计日志)")
+    print("知识图谱: RegulatoryKG + Graph RAG (风险推理/证据链)")
+    print("深度学习: DeepFM, Temporal Transformer, GAT, RiskTextEncoder")
+    print("强化学习: PPO(阈值优化), Thompson Sampling(集成权重)")
     print("=" * 60)
     app.run(host='0.0.0.0', port=port, debug=False)

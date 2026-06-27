@@ -6,5 +6,5 @@ services:
     startCommand: gunicorn app:app --bind 0.0.0.0:$PORT
     envVars:
       - key: ZHIPU_API_KEY
-        value: 325d6fa364954d2e871c30ba95b553bd.KBdQdqgJgELJBhnv
+        sync: false  # 请在Render Dashboard中手动配置API Key
     healthCheckPath: /api/health

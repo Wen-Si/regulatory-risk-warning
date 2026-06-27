@@ -1,257 +1,144 @@
-# 智鉴风控 - 基于Agentic AI的上市公司监管问询预警系统
+# 智鉴风控 v3.0 - AI Native 监管问询预警系统
 
-> 第五届中国研究生金融科技创新大赛 - 东吴证券命题
+[![AI Native](https://img.shields.io/badge/AI--Native-v3.0-cyan)](https://github.com/)
+[![Harness Engineering](https://img.shields.io/badge/Safety-Harness%20Engineering-red)](https://github.com/)
+[![Knowledge Graph](https://img.shields.io/badge/Knowledge-Graph%20RAG-purple)](https://github.com/)
+[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-![AI Powered](https://img.shields.io/badge/AI-GLM--4.5--Flash-blue)
-![Python](https://img.shields.io/badge/Python-3.9+-green)
-![Platform](https://img.shields.io/badge/Platform-Web-orange)
+## 产品简介
 
-## 在线访问
+智鉴风控是基于 **Agentic AI + Harness Engineering + 知识图谱 + 深度学习 + 强化学习** 的上市公司监管问询预警系统，面向A股市场预测上市公司未来30/60/90天被监管问询的概率。
 
-**本地预览地址**: http://localhost:5000 (服务已启动，可直接预览)
-
-**GitHub仓库**: https://github.com/Wen-Si/regulatory-risk-warning
-
-## 项目概述
-
-本项目是一套基于Agentic AI的上市公司扫雷预警系统，综合利用上市公司公告、定期报告、监管问询函及回复、财务指标等多源数据，基于智谱GLM-4.5-Flash大语言模型与多智能体协同技术，实现对上市公司未来受到监管问询概率的预测、风险诱因归因及可解释预警报告生成。
-
-## 核心功能
-
-### 1. 多智能体协同分析 (Agentic AI)
-- **公告研读Agent**：自动检索并分析上市公司公告，提取风险关键词
-- **财务检测Agent**：计算财务指标异常度，识别财务风险信号
-- **案例检索Agent**：匹配历史相似问询案例，提供参考依据
-- **风险预测Agent**：调用智谱GLM-4.5-Flash进行综合风险评估
-- **归因解释Agent**：生成完整的风险归因链条
-- **报告生成Agent**：输出可解释的预警报告
-
-### 2. 监管问询概率预测
-- 30/60/90天多时间窗口预测
-- AUC ≥ 0.75 的预测精度
-- Top 10%高风险公司覆盖真实问询样本 ≥ 35%
-- 二分类F1-Score ≥ 0.65
-
-### 3. 风险语义抽取与归因
-- 监管关注点分类准确率 ≥ 80%
-- 关键证据片段召回率 ≥ 85%
-- 相似历史案例匹配Top-5命中率 ≥ 70%
-
-### 4. 可解释性输出
-- Agent推理链路100%可追踪
-- 关键证据原文展示
-- 逻辑解释有效性 ≥ 85分
-- 可下载预警报告
-- AI风控问答助手
-
-### 5. 功能模块
-- **风险仪表盘**：实时监控全市场风险分布
-- **公司扫雷分析**：单公司深度分析，展示完整Agent推理过程
-- **高风险榜单**：按问询概率排序的TOP10高风险公司
-- **历史案例库**：典型监管问询案例参考
-- **AI助手对话**：智能问答，解答风控相关问题
-
-## 技术架构
+## 核心技术架构 v3.0
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    前端 Web Dashboard                    │
-│  Tailwind CSS | Chart.js | 数据可视化 | 交互界面         │
-└──────────────────────────┬──────────────────────────────┘
-                           │
-┌──────────────────────────▼──────────────────────────────┐
-│                   后端 API 服务层                        │
-│  Flask | RESTful API | 多Agent编排 | 工具调用            │
-└───────┬──────────┬──────────┬──────────┬────────────────┘
-        │          │          │          │
-   ┌────▼───┐ ┌───▼────┐ ┌──▼────┐ ┌───▼────┐
-   │公告研读│ │财务检测│ │案例检索│ │AI预测  │
-   │ Agent  │ │ Agent  │ │ Agent │ │ Agent  │
-   └────────┘ └────────┘ └───────┘ └────────┘
-                           │
-              ┌────────────▼────────────┐
-              │   智谱 GLM-4.5-Flash    │
-              │  大语言模型推理引擎      │
-              └─────────────────────────┘
-                           │
-              ┌────────────▼────────────┐
-              │      数据源层            │
-              │ 上交所 | 深交所 | 北交所 │
-              │ 公告 | 财报 | 问询函     │
-              └─────────────────────────┘
+┌─────────────────────────────────────────────┐
+│        Harness Engineering 安全合规层         │
+│   输入护栏 │ 输出护栏 │ 审计日志 │ 工具防火墙    │
+├─────────────────────────────────────────────┤
+│        知识图谱层 (Graph RAG)                │
+│   监管KG │ 风险推理 │ 证据链 │ 幻觉抑制         │
+├─────────────────────────────────────────────┤
+│        深度学习层                             │
+│ DeepFM │ Temporal Transformer │ GAT │ TextEnc │
+├─────────────────────────────────────────────┤
+│        强化学习层                             │
+│ PPO阈值优化 │ Thompson Sampling │ 在线学习     │
+├─────────────────────────────────────────────┤
+│        规则引擎层                             │
+│ 触发事件检测 │ 财务信号 │ 合规信号 │ 硬约束     │
+└─────────────────────────────────────────────┘
 ```
 
-## 数据源说明
+### 核心特性
 
-本系统数据可从以下官方渠道获取：
-
-1. **上海证券交易所** (http://www.sse.com.cn)
-   - 上市公司公告、定期报告
-   - 监管问询函、监管措施
-   
-2. **深圳证券交易所** (http://www.szse.cn)
-   - 主板/创业板/科创板公告
-   - 问询函与回复
-   
-3. **北京证券交易所** (http://www.bse.cn)
-   - 北交所上市公司信息披露
-   - 监管公开信息
-
-注：当前演示版本内置模拟数据用于演示，实际部署时可接入交易所官方数据接口。
+- **AI Native**: 从底层架构到决策逻辑完全由AI驱动，非AI辅助工具
+- **Harness Engineering**: 输入护栏（中英文注入检测、PII脱敏）、输出护栏（合规校验）、审计日志、熔断器
+- **知识图谱**: 24+实体、36+关系的监管金融KG，BFS多跳推理，Graph RAG证据链
+- **深度学习**: DeepFM + Temporal Transformer + GAT图注意力 + RiskTextEncoder四路并行
+- **强化学习**: PPO自适应阈值优化，Thompson Sampling动态集成，Online Learner在线学习
+- **安全合规**: 10步AI决策流水线，全链路安全检查和审计记录
 
 ## 快速开始
 
-### 方式一：本地运行
+### 环境要求
+- Python 3.8+
+- pip
+
+### 安装与运行
 
 ```bash
 # 克隆仓库
-git clone https://github.com/Wen-Si/regulatory-risk-warning.git
+git clone <repo-url>
 cd regulatory-risk-warning
 
 # 安装依赖
 pip install -r requirements.txt
 
+# （可选）配置智谱AI API Key（用于LLM可解释性报告和AI助手）
+export ZHIPU_API_KEY="your-api-key"
+
 # 启动服务
 python app.py
+
+# 访问 http://localhost:5000
 ```
 
-服务将在 `http://localhost:5000` 启动，浏览器直接访问即可使用。
+### 生产部署
 
-### 方式二：一键部署到云平台
-
-**部署到 Render:**
-1. 访问 https://render.com
-2. 使用GitHub账号登录
-3. 点击 "New +" -> "Web Service"
-4. 选择本仓库
-5. 配置：
-   - Build Command: `pip install -r requirements.txt`
-   - Start Command: `gunicorn app:app --bind 0.0.0.0:$PORT`
-6. 添加环境变量 `ZHIPU_API_KEY`
-7. 点击 "Create Web Service"
-
-**部署到 Railway:**
-1. 访问 https://railway.app
-2. 使用GitHub账号登录
-3. 点击 "New Project" -> "Deploy from GitHub repo"
-4. 选择本仓库
-5. 添加环境变量 `ZHIPU_API_KEY`
-6. 自动部署完成后生成公开访问URL
-
-**部署到 Vercel:**
 ```bash
-npm install -g vercel
-vercel --prod
-```
+# 使用gunicorn
+gunicorn app:app --bind 0.0.0.0:5000 --workers 4
 
-## API接口文档
-
-### 健康检查
-```
-GET /api/health
-```
-
-### 搜索公司
-```
-GET /api/companies/search?keyword=关键词
-```
-
-### 分析单个公司
-```
-POST /api/analyze
-Content-Type: application/json
-
-{
-  "company_code": "600519"
-}
-```
-
-### 批量分析
-```
-POST /api/analyze/batch
-Content-Type: application/json
-
-{
-  "company_codes": ["600519", "000001", "300750"]
-}
-```
-
-### 获取高风险榜单
-```
-GET /api/risk/hot
-```
-
-### AI问答助手
-```
-POST /api/chat
-Content-Type: application/json
-
-{
-  "question": "如何识别财务造假风险？"
-}
-```
-
-### 仪表盘统计
-```
-GET /api/dashboard/stats
-```
-
-### 历史案例库
-```
-GET /api/cases/history?risk_type=财务异常
-```
-
-## 智谱AI配置
-
-本项目使用智谱AI的GLM-4.5-Flash模型。
-
-获取API Key：https://open.bigmodel.cn/
-
-API Key已在代码中预置用于演示，生产环境请通过环境变量配置：
-```bash
-export ZHIPU_API_KEY=your_api_key_here
+# 或部署到Render/Railway（已包含render.yaml配置）
 ```
 
 ## 项目结构
 
 ```
 regulatory-risk-warning/
-├── app.py                  # Flask主应用（前端+API）
-├── requirements.txt        # Python依赖
-├── Procfile                # Render/Railway部署配置
-├── runtime.txt             # Python版本指定
-├── vercel.json             # Vercel部署配置
+├── app.py                    # Flask主应用（含安全头/速率限制）
+├── requirements.txt          # Python依赖
+├── render.yaml               # Render部署配置
 ├── static/
-│   └── index.html          # 前端单页应用
-└── README.md               # 项目说明
+│   └── index.html            # 前端SPA（含XSS防护）
+├── ml_engine/
+│   ├── predictor.py          # 混合预测引擎v3.0（10步流水线）
+│   ├── features.py           # 特征工程
+│   ├── safety/               # Harness Engineering安全层
+│   │   ├── guardrails.py     # 安全缰绳主控
+│   │   ├── input_guard.py    # 输入护栏
+│   │   ├── output_guard.py   # 输出护栏
+│   │   └── audit_logger.py   # 审计日志
+│   ├── knowledge_graph/      # 知识图谱模块
+│   │   ├── knowledge_graph.py # 监管KG主类
+│   │   ├── entities.py       # 实体定义
+│   │   ├── relations.py      # 关系定义
+│   │   └── graph_rag.py      # Graph RAG
+│   ├── models/               # 深度学习模型
+│   └── rl/                   # 强化学习组件
+├── rule_engine/              # 规则引擎
+└── logs/                     # 审计日志（.gitignore排除）
 ```
 
-## 技术指标达成情况
+## API接口
 
-| 指标 | 目标值 | 实现状态 |
-|------|--------|----------|
-| AUC (60天预测) | ≥ 0.75 | ✓ 基于规则+AI混合模型 |
-| Top10%覆盖率 | ≥ 35% | ✓ 多因子排序模型 |
-| F1-Score | ≥ 0.65 | ✓ 集成学习框架 |
-| 监管关注点分类准确率 | ≥ 80% | ✓ GLM-4.5-Flash语义理解 |
-| 证据召回率 | ≥ 85% | ✓ 多Agent协同检索 |
-| 案例Top5命中率 | ≥ 70% | ✓ 语义相似度匹配 |
-| 推理链路可追踪率 | 100% | ✓ 完整Agent日志系统 |
-| 解释有效性 | ≥ 85分 | ✓ 可解释报告生成 |
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/` | 前端页面 |
+| GET | `/api/health` | 健康检查 |
+| POST | `/api/ml/predict` | ML预测（含安全护栏+KG） |
+| POST | `/api/analyze` | 单公司深度分析 |
+| POST | `/api/analyze/batch` | 批量分析 |
+| GET | `/api/risk/hot` | 高风险榜单 |
+| POST | `/api/chat` | AI风控助手（含安全护栏） |
+| GET | `/api/safety/report` | 安全层统计 |
+| GET | `/api/kg/stats` | 知识图谱统计 |
 
-## 特色亮点
+## 安全特性
 
-1. **完整的Agentic AI架构**：6个专业Agent协同工作，模拟资深风控专家的分析流程
-2. **可解释性设计**：每个推理步骤、每个风险判断都有证据支持和日志记录
-3. **智谱GLM-4.5-Flash深度集成**：利用大模型的语义理解能力进行风险评估和报告生成
-4. **专业金融UI设计**：深色专业主题，数据可视化仪表盘，符合金融从业者使用习惯
-5. **全响应式设计**：支持桌面端和移动端访问
-6. **实时AI对话**：内置风控专家助手，随时解答专业问题
+v3.0版本全面强化了安全合规能力：
 
-## 开发者
+- 输入安全：中英文提示注入检测（3层防御）、PII自动脱敏、IP速率限制
+- 输出安全：置信度门控、禁止表述过滤、强制风险免责声明
+- 审计日志：全链路不可篡改记录，支持按时间/公司/风险等级检索
+- 访问控制：安全响应头（CSP/HSTS/X-Frame-Options等）、CORS白名单
+- 前端安全：XSS防护（escapeHtml/sanitizeHtml）、请求大小限制
 
-东吴证券 - 基于Agentic AI的上市公司监管问询概率预测与扫雷预警算法探索
+## 技术栈
 
-## 许可证
+- **后端**: Flask + NumPy
+- **前端**: Tailwind CSS + Chart.js
+- **深度学习**: NumPy实现（DeepFM/Transformer/GAT）
+- **强化学习**: PPO + Thompson Sampling
+- **知识图谱**: 属性图 + BFS多跳推理 + Graph RAG
+- **安全层**: Harness Engineering四层架构
+- **LLM**: 智谱GLM-4-Flash（可选）
+
+## 商业计划书
+
+完整商业计划书见 `智鉴风控v3_商业计划书.pptx`。
+
+## License
 
 MIT License
